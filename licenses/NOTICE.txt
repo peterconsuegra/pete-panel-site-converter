@@ -1,0 +1,6 @@
+Third-Party Notices
+
+This plugin includes:
+- mysqldump-php (third-party library)
+  Bundled file: bin/Mysqldump.php
+  License: GPLv3 (see licenses/GPL-3.0.txt)
