@@ -194,7 +194,10 @@ class Mysqldump
 
         $diff = array_diff(array_keys($this->dumpSettings), array_keys($dumpSettingsDefault));
         if (count($diff) > 0) {
-            throw new Exception("Unexpected value in dumpSettings: (".implode(",", $diff).")");
+            $diff_str = implode(',', array_map('strval', $diff));
+            throw new Exception(
+                'Unexpected value in dumpSettings: (' . Utils::sanitizeForException($diff_str) . ')'
+            );
         }
 
         if (!is_array($this->dumpSettings['include-tables']) ||
@@ -352,17 +355,21 @@ class Mysqldump
                     $this->version = $this->dbHandler->getAttribute(PDO::ATTR_SERVER_VERSION);
                     break;
                 default:
-                    throw new Exception("Unsupported database type (".$this->dbType.")");
+                    throw new Exception(
+                        'Unsupported database type (' . Utils::sanitizeForException($this->dbType) . ')'
+                    );
             }
         } catch (PDOException $e) {
             throw new Exception(
                 "Connection to ".$this->dbType." failed with message: ".
-                $e->getMessage()
+                Utils::sanitizeForException($e->getMessage())
             );
         }
 
         if (is_null($this->dbHandler)) {
-            throw new Exception("Connection to ".$this->dbType."failed");
+            throw new Exception(
+                'Connection to ' . Utils::sanitizeForException($this->dbType) . ' failed'
+            );
         }
 
         $this->dbHandler->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_NATURAL);
@@ -429,7 +436,9 @@ class Mysqldump
         // This check will be removed once include-tables supports regexps.
         if (0 < count($this->dumpSettings['include-tables'])) {
             $name = implode(",", $this->dumpSettings['include-tables']);
-            throw new Exception("Table (".$name.") not found in database");
+            throw new Exception(
+                'Table (' . Utils::sanitizeForException($name) . ') not found in database'
+            );
         }
 
         $this->exportTables();
@@ -471,7 +480,7 @@ class Mysqldump
             }
 
             if (!$this->dumpSettings['skip-dump-date']) {
-                $header .= "-- Date: ".date('r').PHP_EOL.PHP_EOL;
+                $header .= "-- Date: ".Utils::dateRfc2822().PHP_EOL.PHP_EOL;
             }
         }
         return $header;
@@ -488,7 +497,7 @@ class Mysqldump
         if (!$this->dumpSettings['skip-comments']) {
             $footer .= '-- Dump completed';
             if (!$this->dumpSettings['skip-dump-date']) {
-                $footer .= ' on: '.date('r');
+                $footer .= ' on: '.Utils::dateRfc2822();
             }
             $footer .= PHP_EOL;
         }
@@ -1304,6 +1313,50 @@ class Mysqldump
 }
 
 /**
+ * Internal helpers.
+ *
+ * This file is a bundled library. Plugin Check (WPCS) expects escaping/sanitizing
+ * for dynamic values in exception messages and prefers wp_date() over date().
+ */
+final class Utils
+{
+    /**
+     * Sanitize values before embedding them into exception messages.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    public static function sanitizeForException($value)
+    {
+        if (is_array($value) || is_object($value)) {
+            $value = function_exists('wp_json_encode') ? wp_json_encode($value) : json_encode($value);
+        }
+
+        $value = (string) $value;
+
+        if (function_exists('wp_strip_all_tags')) {
+            $value = wp_strip_all_tags($value);
+        }
+
+        if (function_exists('sanitize_text_field')) {
+            $value = sanitize_text_field($value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * RFC 2822 date string using WP timezone when available.
+     *
+     * @return string
+     */
+    public static function dateRfc2822()
+    {
+        return function_exists('wp_date') ? wp_date('r') : gmdate('r');
+    }
+}
+
+/**
  * Enum with all available compression methods
  *
  */
@@ -1328,6 +1381,7 @@ abstract class CompressMethod
 
 abstract class CompressManagerFactory
 {
+
     /**
      * @param string $c
      * @return CompressBzip2|CompressGzip|CompressNone
@@ -1336,7 +1390,9 @@ abstract class CompressManagerFactory
     {
         $c = ucfirst(strtolower($c));
         if (!CompressMethod::isValid($c)) {
-            throw new Exception("Compression method ($c) is not defined yet");
+            throw new Exception(
+                'Compression method (' . Utils::sanitizeForException($c) . ') is not defined yet'
+            );
         }
 
         $method = __NAMESPACE__."\\"."Compress".$c;
@@ -1361,7 +1417,7 @@ class CompressBzip2 extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = bzopen($filename, "w");
+        $this->fileHandler = bzopen($filename, "w"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzopen
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1371,7 +1427,7 @@ class CompressBzip2 extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = bzwrite($this->fileHandler, $str);
+        $bytesWritten = bzwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzwrite
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1380,7 +1436,7 @@ class CompressBzip2 extends CompressManagerFactory
 
     public function close()
     {
-        return bzclose($this->fileHandler);
+        return bzclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzclose
     }
 }
 
@@ -1400,7 +1456,7 @@ class CompressGzip extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = gzopen($filename, "wb");
+        $this->fileHandler = gzopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzopen
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1410,7 +1466,7 @@ class CompressGzip extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = gzwrite($this->fileHandler, $str);
+        $bytesWritten = gzwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzwrite
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1419,7 +1475,7 @@ class CompressGzip extends CompressManagerFactory
 
     public function close()
     {
-        return gzclose($this->fileHandler);
+        return gzclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzclose
     }
 }
 
@@ -1432,7 +1488,7 @@ class CompressNone extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = fopen($filename, "wb");
+        $this->fileHandler = fopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1442,7 +1498,7 @@ class CompressNone extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = fwrite($this->fileHandler, $str);
+        $bytesWritten = fwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1451,7 +1507,7 @@ class CompressNone extends CompressManagerFactory
 
     public function close()
     {
-        return fclose($this->fileHandler);
+        return fclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
     }
 }
 
@@ -1466,7 +1522,7 @@ class CompressGzipstream extends CompressManagerFactory
      */
     public function open($filename)
     {
-    $this->fileHandler = fopen($filename, "wb");
+    $this->fileHandler = fopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
     if (false === $this->fileHandler) {
         throw new Exception("Output file is not writable");
     }
@@ -1478,7 +1534,7 @@ class CompressGzipstream extends CompressManagerFactory
     public function write($str)
     {
 
-    $bytesWritten = fwrite($this->fileHandler, deflate_add($this->compressContext, $str, ZLIB_NO_FLUSH));
+    $bytesWritten = fwrite($this->fileHandler, deflate_add($this->compressContext, $str, ZLIB_NO_FLUSH)); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
     if (false === $bytesWritten) {
         throw new Exception("Writting to file failed! Probably, there is no more free space left?");
     }
@@ -1487,8 +1543,8 @@ class CompressGzipstream extends CompressManagerFactory
 
     public function close()
     {
-    fwrite($this->fileHandler, deflate_add($this->compressContext, '', ZLIB_FINISH));
-    return fclose($this->fileHandler);
+    fwrite($this->fileHandler, deflate_add($this->compressContext, '', ZLIB_FINISH)); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
+    return fclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
     }
 }
 
@@ -1530,7 +1586,9 @@ abstract class TypeAdapterFactory
     {
         $c = ucfirst(strtolower($c));
         if (!TypeAdapter::isValid($c)) {
-            throw new Exception("Database type support for ($c) not yet available");
+            throw new Exception(
+                'Database type support for (' . Utils::sanitizeForException($c) . ') not yet available'
+            );
         }
         $method = __NAMESPACE__."\\"."TypeAdapter".$c;
         return new $method($dbHandler, $dumpSettings);
@@ -2321,7 +2379,9 @@ class TypeAdapterMysql extends TypeAdapterFactory
     private function check_parameters($num_args, $expected_num_args, $method_name)
     {
         if ($num_args != $expected_num_args) {
-            throw new Exception("Unexpected parameter passed to $method_name");
+            throw new Exception(
+                'Unexpected parameter passed to ' . Utils::sanitizeForException($method_name)
+            );
         }
         return;
     }

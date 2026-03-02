@@ -558,7 +558,8 @@ function pete_psc_stream_file_to_output( $path ) {
 		if ( $len === 0 ) {
 			break;
 		}
-		echo $buf; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary ZIP streaming must not be escaped.
+		echo $buf;
 		$sent += $len;
 
 		if ( function_exists( 'flush' ) ) {
@@ -1016,7 +1017,7 @@ function pete_psc_handle_secure_download() {
 		pete_psc_die( __( 'You must be an administrator to download this export.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
 	}
 
-	$q_raw = isset( $_GET['q'] ) ? wp_unslash( $_GET['q'] ) : '';
+	$q_raw = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
 	$q     = preg_replace( '/[^A-Za-z0-9]/', '', $q_raw );
 	if ( empty( $q ) ) {
 		pete_psc_die( __( 'Invalid download request (missing id).', 'pete-panel-site-converter' ), 400, __( 'Bad Request', 'pete-panel-site-converter' ) );
@@ -1324,6 +1325,7 @@ function pete_run_export_core( array $job ) {
 		$db_error     = wp_strip_all_tags( (string) $raw_db_error );
 		throw new Exception(
 			sprintf(
+				/* translators: %s: database error message */
 				esc_html__( 'Database dump failed: %s', 'pete-panel-site-converter' ),
 				$db_error
 			)
@@ -1359,6 +1361,7 @@ function pete_run_export_core( array $job ) {
 	$save_progress(
 		90,
 		sprintf(
+			/* translators: %d: number of files added to the ZIP */
 			__( 'Finalizing archive… (%d files)', 'pete-panel-site-converter' ),
 			(int) $added_files
 		)
@@ -1489,8 +1492,8 @@ function pete_psc_rest_start_export( WP_REST_Request $req ) {
 		)
 	);
 
-	if ( ! wp_next_scheduled( 'pete_run_export_job', array( $job_id ) ) ) {
-		$scheduled = wp_schedule_single_event( time() + 2, 'pete_run_export_job', array( $job_id ) );
+	if ( ! wp_next_scheduled( 'pete_psc_run_export_job', array( $job_id ) ) ) {
+		$scheduled = wp_schedule_single_event( time() + 2, 'pete_psc_run_export_job', array( $job_id ) );
 
 		if ( false === $scheduled ) {
 			$state['done']     = true;
@@ -1566,6 +1569,7 @@ function pete_psc_rest_export_status( WP_REST_Request $req ) {
 
 	if ( ! empty( $state['download_name'] ) ) {
 		$state['download_name'] = sprintf(
+			/* translators: %s: suggested download filename */
 			__( 'Download %s', 'pete-panel-site-converter' ),
 			(string) $state['download_name']
 		);
@@ -1614,8 +1618,9 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 		pete_psc_log( 'Force-run finished OK', array( 'job' => $job_id ) );
 		return new WP_REST_Response( array( 'ok' => true ), 200 );
 	} catch ( Throwable $e ) {
+		$err_text         = wp_strip_all_tags( (string) $e->getMessage() );
 		$state['done']     = true;
-		$state['error']    = $e->getMessage();
+		$state['error']    = $err_text;
 		$state['message']  = __( 'Failed', 'pete-panel-site-converter' );
 		$state['progress'] = 100;
 		set_transient( $key, $state, HOUR_IN_SECONDS );
@@ -1624,8 +1629,9 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 		return new WP_REST_Response(
 			array(
 				'error' => sprintf(
+					/* translators: %s: error message */
 					__( 'Error: %s', 'pete-panel-site-converter' ),
-					$e->getMessage()
+					$err_text
 				),
 			),
 			500
@@ -1638,7 +1644,7 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 // ---------------------------------------------------------------------
 
 add_action(
-	'pete_run_export_job',
+	'pete_psc_run_export_job',
 	function ( $job_id ) {
 		$job_id = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $job_id );
 		if ( $job_id === '' ) {

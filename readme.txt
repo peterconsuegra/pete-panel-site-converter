@@ -1,18 +1,18 @@
-=== WordPress Migration & Backup Export (Pete Panel) ===
+=== Migration & Backup Export for Pete Panel ===
 Contributors: pedroconsuegra
-Tags: wordpress migration, migration plugin, backup plugin, wordpress backup, clone, staging, export, site migration, site backup, duplicator, local development, database export
+Tags: migration, backup, site export, cloning, staging, database export, deployment, pete panel
 Requires at least: 5.8
-Tested up to: 6.5
+Tested up to: 6.9
 Requires PHP: 7.4
 Stable tag: 1.0.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Migrate, clone, or back up your full WordPress site (files + database) in one click — ready for instant deployment.
+Migrate, clone, or back up your full WordPress site (files + database) in one click - ready for instant deployment.
 
 == Description ==
 
-WordPress Migration & Backup Export (Pete Panel) is a powerful WordPress migration plugin and backup plugin that lets you export, clone, or move your entire WordPress site in one click.
+Migration & Backup Export for Pete Panel is a powerful WordPress migration plugin and backup plugin that lets you export, clone, or move your entire WordPress site in one click.
 
 Create a complete WordPress backup and migration export including files and database, packaged into a secure, ready-to-deploy archive.
 
@@ -36,7 +36,7 @@ After export, you receive a secure, admin-only download link inside WordPress.
 
 ---
 
-== WordPress Migration & Backup Features ==
+== Migration & Backup Features ==
 
 - Full WordPress migration export (files + database)
 - Complete WordPress backup generation
@@ -50,7 +50,7 @@ After export, you receive a secure, admin-only download link inside WordPress.
 
 ---
 
-== How the WordPress Migration & Backup Export Works ==
+== How the Migration & Backup Export Works ==
 
 1. Click **Start export** in WP Admin → Pete Converter.
 2. The plugin queues the WordPress migration export via WP-Cron (background processing).
