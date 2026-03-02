@@ -144,15 +144,15 @@ function pete_psc_admin_notice_distribution_missing() {
 	$class    = $is_error ? 'notice notice-error' : 'notice notice-warning';
 
 	echo '<div class="' . esc_attr( $class ) . '"><p>';
-	echo '<strong>' . esc_html__( 'Pete Panel Site Converter:', PETE_PSC_TEXT_DOMAIN ) . '</strong> ';
+	echo '<strong>' . esc_html__( 'Pete Panel Site Converter:', 'pete-panel-site-converter' ) . '</strong> ';
 
 	if ( ! empty( $created ) ) {
-		echo esc_html__( 'Created missing directories:', PETE_PSC_TEXT_DOMAIN ) . ' ';
+		echo esc_html__( 'Created missing directories:', 'pete-panel-site-converter' ) . ' ';
 		echo '<code>' . esc_html( implode( ', ', $created ) ) . '</code>. ';
 	}
 
 	if ( ! empty( $missing ) ) {
-		echo esc_html__( 'Some required plugin files are missing from this installation (likely not included in the plugin ZIP). Please re-upload/reinstall the plugin including:', PETE_PSC_TEXT_DOMAIN );
+		echo esc_html__( 'Some required plugin files are missing from this installation (likely not included in the plugin ZIP). Please re-upload/reinstall the plugin including:', 'pete-panel-site-converter' );
 		echo '</p><ul style="margin-left: 1.2em; list-style: disc;">';
 		foreach ( $missing as $m ) {
 			echo '<li><code>' . esc_html( $m ) . '</code></li>';
@@ -160,7 +160,7 @@ function pete_psc_admin_notice_distribution_missing() {
 		echo '</ul><p>';
 	}
 
-	echo esc_html__( 'This does not stop exports, but it indicates an incomplete plugin package.', PETE_PSC_TEXT_DOMAIN );
+	echo esc_html__( 'This does not stop exports, but it indicates an incomplete plugin package.', 'pete-panel-site-converter' );
 	echo '</p></div>';
 }
 
