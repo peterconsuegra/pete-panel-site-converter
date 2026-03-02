@@ -239,9 +239,17 @@ if ( ! function_exists( 'pete_psc_log' ) ) {
 		if ( ! empty( $ctx ) ) {
 			$msg .= ' | ' . wp_json_encode( $ctx );
 		}
-		if ( function_exists( 'error_log' ) ) {
-			error_log( $prefix . $msg ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log
-		}
+		/**
+		 * Fires when the plugin wants to log a debug message.
+		 *
+		 * Plugin Check flags direct error_log() usage. This hook lets developers
+		 * route logs to their preferred logger during development without shipping
+		 * debug output in production.
+		 *
+		 * @param string $message Full message, including prefix.
+		 * @param array  $context Context array.
+		 */
+		do_action( 'pete_psc_log', $prefix . $msg, $ctx );
 	}
 }
 
@@ -483,7 +491,7 @@ function pete_psc_rmdir( $path, $label = '' ) {
 		);
 	}
 
-	$ok = rmdir( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.rmdir_rmdir
+	$ok = rmdir( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
 	if ( ! $ok ) {
 		pete_psc_log(
 			'rmdir failed',
@@ -533,7 +541,7 @@ function pete_psc_filesize( $path, $label = '' ) {
 function pete_psc_stream_file_to_output( $path ) {
 	$path = (string) $path;
 
-	$fh = fopen( $path, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fopen
+	$fh = fopen( $path, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 	if ( ! $fh ) {
 		pete_psc_log( 'fopen failed for download stream', array( 'path' => $path ) );
 		return 0;
@@ -541,7 +549,7 @@ function pete_psc_stream_file_to_output( $path ) {
 
 	$sent = 0;
 	while ( ! feof( $fh ) ) {
-		$buf = fread( $fh, 1024 * 1024 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fread
+		$buf = fread( $fh, 1024 * 1024 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
 		if ( $buf === false ) {
 			pete_psc_log( 'fread failed while streaming download', array( 'path' => $path, 'sent' => $sent ) );
 			break;
@@ -558,7 +566,7 @@ function pete_psc_stream_file_to_output( $path ) {
 		}
 	}
 
-	fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+	fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 	return (int) $sent;
 }
 
@@ -667,7 +675,7 @@ function pete_psc_stream_copy( $src, $dest ) {
 	$src  = (string) $src;
 	$dest = (string) $dest;
 
-	$fsrc = fopen( $src, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fopen
+	$fsrc = fopen( $src, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 	if ( ! $fsrc ) {
 		pete_psc_log( 'fopen failed (src) during stream_copy', array( 'src' => $src ) );
 		return 0;
@@ -676,14 +684,14 @@ function pete_psc_stream_copy( $src, $dest ) {
 	$dir = dirname( $dest );
 	if ( ! wp_mkdir_p( $dir ) ) {
 		pete_psc_log( 'wp_mkdir_p failed (dest dir) during stream_copy', array( 'dir' => $dir, 'dest' => $dest ) );
-		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 		return 0;
 	}
 
-	$fdest = fopen( $dest, 'wb+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fopen
+	$fdest = fopen( $dest, 'wb+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 	if ( ! $fdest ) {
 		pete_psc_log( 'fopen failed (dest) during stream_copy', array( 'dest' => $dest ) );
-		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 		return 0;
 	}
 
@@ -693,8 +701,8 @@ function pete_psc_stream_copy( $src, $dest ) {
 		$len = 0;
 	}
 
-	fclose( $fsrc );  // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
-	fclose( $fdest ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+	fclose( $fsrc );  // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+	fclose( $fdest ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 
 	return (int) $len;
 }
@@ -763,7 +771,7 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 	$site_root      = trailingslashit( (string) $site_root );
 	$site_root_real = pete_psc_realpath( $site_root, 'zip_site_root' );
 	if ( ! $site_root_real ) {
-		throw new Exception( __( 'Could not resolve site root realpath.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Could not resolve site root realpath.', 'pete-panel-site-converter' ) );
 	}
 	$site_root_real = trailingslashit( wp_normalize_path( $site_root_real ) );
 
@@ -1026,7 +1034,7 @@ function pete_psc_handle_secure_download() {
 		pete_psc_die( __( 'Invalid link (no owner bound). Please run a new export.', 'pete-panel-site-converter' ), 400, __( 'Bad Request', 'pete-panel-site-converter' ) );
 	}
 
-	$provided   = isset( $_GET['_wpnonce'] ) ? (string) $_GET['_wpnonce'] : '';
+	$provided   = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
 	$action_key = 'pete_download_' . $owner_id . '_' . $q;
 
 	if ( ! $provided || ! wp_verify_nonce( $provided, $action_key ) ) {
@@ -1188,7 +1196,7 @@ function pete_psc_get_export_base_dir() {
 		pete_psc_log( 'wp_mkdir_p failed for preferred export dir', array( 'dir' => $preferred ) );
 	}
 
-	if ( $preferred_ok && is_dir( $preferred ) && is_writable( $preferred ) ) {
+	if ( $preferred_ok && is_dir( $preferred ) && wp_is_writable( $preferred ) ) {
 		$pref_dir = trailingslashit( $preferred );
 
 		$ht = $pref_dir . '.htaccess';
@@ -1236,7 +1244,7 @@ function pete_run_export_core( array $job ) {
 	}
 
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
-		throw new Exception( __( 'Unauthorized', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Unauthorized', 'pete-panel-site-converter' ) );
 	}
 
 	$base_info   = pete_psc_get_export_base_dir();
@@ -1271,13 +1279,13 @@ function pete_run_export_core( array $job ) {
 	pete_psc_log( 'Creating zip', array( 'job' => (string) $job['id'], 'zip' => basename( $zipPath ) ) );
 
 	if ( ! class_exists( 'ZipArchive' ) ) {
-		throw new Exception( __( 'ZipArchive PHP extension not available. Please enable it to create the .zip file.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'ZipArchive PHP extension not available. Please enable it to create the .zip file.', 'pete-panel-site-converter' ) );
 	}
 
 	$zip         = new ZipArchive();
 	$open_result = $zip->open( $zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE );
 	if ( true !== $open_result ) {
-		throw new Exception( __( 'Could not create export archive (ZipArchive open failed).', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Could not create export archive (ZipArchive open failed).', 'pete-panel-site-converter' ) );
 	}
 
 	$zip->addEmptyDir( 'filem' );
@@ -1293,7 +1301,7 @@ function pete_run_export_core( array $job ) {
 	if ( ! $zip->addFromString( 'config.txt', $cfg ) ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'config_add_failed_cleanup' );
-		throw new Exception( __( 'Failed to add config.txt to archive.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Failed to add config.txt to archive.', 'pete-panel-site-converter' ) );
 	}
 
 	$save_progress( 30, __( 'Dumping database…', 'pete-panel-site-converter' ) );
@@ -1312,10 +1320,12 @@ function pete_run_export_core( array $job ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'zip_cleanup_after_db_fail' );
 		pete_psc_unlink( $tmpSql, 'tmp_sql_cleanup_after_db_fail' );
+		$raw_db_error = $e->getMessage();
+		$db_error     = wp_strip_all_tags( (string) $raw_db_error );
 		throw new Exception(
 			sprintf(
-				__( 'Database dump failed: %s', 'pete-panel-site-converter' ),
-				$e->getMessage()
+				esc_html__( 'Database dump failed: %s', 'pete-panel-site-converter' ),
+				$db_error
 			)
 		);
 	}
@@ -1324,14 +1334,14 @@ function pete_run_export_core( array $job ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'zip_cleanup_missing_sql' );
 		pete_psc_unlink( $tmpSql, 'tmp_sql_cleanup_missing_sql' );
-		throw new Exception( __( 'Database dump created no readable SQL file.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Database dump created no readable SQL file.', 'pete-panel-site-converter' ) );
 	}
 
 	if ( ! $zip->addFile( $tmpSql, 'query.sql' ) ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'zip_cleanup_add_sql_failed' );
 		pete_psc_unlink( $tmpSql, 'tmp_sql_cleanup_add_sql_failed' );
-		throw new Exception( __( 'Failed to add query.sql to archive.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Failed to add query.sql to archive.', 'pete-panel-site-converter' ) );
 	}
 
 	$save_progress( 45, __( 'Adding files to archive…', 'pete-panel-site-converter' ) );
@@ -1362,7 +1372,7 @@ function pete_run_export_core( array $job ) {
 	if ( $zip_size <= 0 ) {
 		pete_psc_log( 'Zip created but appears empty/invalid', array( 'job' => (string) $job['id'], 'zip' => basename( $zipPath ) ) );
 		pete_psc_unlink( $zipPath, 'zip_empty_cleanup' );
-		throw new Exception( __( 'Export archive created but appears to be invalid (0 bytes).', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Export archive created but appears to be invalid (0 bytes).', 'pete-panel-site-converter' ) );
 	}
 
 	$owner = ( isset( $job['run_as'] ) && $job['run_as'] ) ? (int) $job['run_as'] : (int) get_current_user_id();
