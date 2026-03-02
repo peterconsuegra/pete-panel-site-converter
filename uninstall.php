@@ -6,7 +6,7 @@
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
-    exit;
+	exit;
 }
 
 global $wpdb;
@@ -16,124 +16,150 @@ global $wpdb;
 // ---------------------------------------------------------------------
 
 // Job state transients
+// We intentionally use direct SQL here because WordPress provides no API to bulk-delete transients by wildcard.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
-    "DELETE FROM {$wpdb->options}
-     WHERE option_name LIKE '_transient_pete_export_job_%'
-        OR option_name LIKE '_transient_timeout_pete_export_job_%'"
+	$wpdb->prepare(
+		"DELETE FROM {$wpdb->options}
+		 WHERE option_name LIKE %s
+		    OR option_name LIKE %s",
+		'_transient_pete_export_job_%',
+		'_transient_timeout_pete_export_job_%'
+	)
 );
 
 // Download token transients
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
-    "DELETE FROM {$wpdb->options}
-     WHERE option_name LIKE '_transient_pete_export_id_%'
-        OR option_name LIKE '_transient_timeout_pete_export_id_%'"
+	$wpdb->prepare(
+		"DELETE FROM {$wpdb->options}
+		 WHERE option_name LIKE %s
+		    OR option_name LIKE %s",
+		'_transient_pete_export_id_%',
+		'_transient_timeout_pete_export_id_%'
+	)
 );
 
 // ---------------------------------------------------------------------
 // 2) Remove export directory inside uploads (EXTRA CAUTIOUS)
 // ---------------------------------------------------------------------
 
-$uploads = wp_upload_dir();
-$uploads_base = isset($uploads['basedir']) ? $uploads['basedir'] : '';
+$ppsc_uploads      = wp_upload_dir();
+$ppsc_uploads_base = isset( $ppsc_uploads['basedir'] ) ? $ppsc_uploads['basedir'] : '';
 
-if ( empty( $uploads_base ) || ! is_dir( $uploads_base ) ) {
-    // If uploads is not available, do nothing.
-    return;
+if ( empty( $ppsc_uploads_base ) || ! is_dir( $ppsc_uploads_base ) ) {
+	// If uploads is not available, do nothing.
+	return;
 }
 
-$expected_folder = 'pete-panel-site-converter';
-$target_dir      = trailingslashit( $uploads_base ) . $expected_folder;
+$ppsc_expected_folder = 'pete-panel-site-converter';
+$ppsc_target_dir      = trailingslashit( $ppsc_uploads_base ) . $ppsc_expected_folder;
 
 // Resolve real paths (prevents path traversal or symlink surprises)
-$uploads_real = realpath( $uploads_base );
-$target_real  = realpath( $target_dir );
+$ppsc_uploads_real = realpath( $ppsc_uploads_base );
+$ppsc_target_real  = realpath( $ppsc_target_dir );
 
 // If folder doesn't exist (yet), nothing to do.
-if ( $target_real === false || ! is_dir( $target_real ) ) {
-    return;
+if ( $ppsc_target_real === false || ! is_dir( $ppsc_target_real ) ) {
+	return;
 }
 
 // Normalize slashes
-$uploads_real = rtrim( str_replace('\\', '/', $uploads_real ), '/' );
-$target_real  = rtrim( str_replace('\\', '/', $target_real ), '/' );
+$ppsc_uploads_real = rtrim( str_replace( '\\', '/', $ppsc_uploads_real ), '/' );
+$ppsc_target_real  = rtrim( str_replace( '\\', '/', $ppsc_target_real ), '/' );
 
 // HARD SAFETY CHECKS:
 // 1) Target must be inside uploads
 // 2) Target must NOT equal uploads root
 // 3) Target must end with the expected folder name exactly
-if ( strpos( $target_real, $uploads_real . '/' ) !== 0 ) {
-    return; // not inside uploads
+if ( strpos( $ppsc_target_real, $ppsc_uploads_real . '/' ) !== 0 ) {
+	return; // not inside uploads
 }
-if ( $target_real === $uploads_real ) {
-    return; // never delete uploads root
+if ( $ppsc_target_real === $ppsc_uploads_real ) {
+	return; // never delete uploads root
 }
-if ( basename( $target_real ) !== $expected_folder ) {
-    return; // must match exactly
+if ( basename( $ppsc_target_real ) !== $ppsc_expected_folder ) {
+	return; // must match exactly
+}
+
+// Initialize WP_Filesystem so Plugin Check does not flag direct filesystem operations.
+require_once ABSPATH . 'wp-admin/includes/file.php';
+WP_Filesystem();
+global $wp_filesystem;
+
+if ( ! isset( $wp_filesystem ) || ! is_object( $wp_filesystem ) ) {
+	// If filesystem cannot be initialized, fail safely without deleting anything.
+	return;
 }
 
 /**
  * Recursively delete directory contents safely.
- * - Only touches paths inside $target_real.
+ * - Only touches paths inside $ppsc_target_real.
  * - Optionally restrict deletions to known file types.
  */
-$allowed_extensions = array(
-    'zip', 'sql', 'txt', 'log', 'json',
-    'htaccess', // sometimes seen as extensionless but kept here for clarity
+$ppsc_allowed_extensions = array(
+	'zip',
+	'sql',
+	'txt',
+	'log',
+	'json',
+	'htaccess', // sometimes seen as extensionless but kept here for clarity
 );
-$allowed_filenames = array(
-    '.htaccess',
-    'index.html',
-    'index.php',
+
+$ppsc_allowed_filenames = array(
+	'.htaccess',
+	'index.html',
+	'index.php',
 );
 
-$delete_tree = function( $dir ) use ( &$delete_tree, $target_real, $allowed_extensions, $allowed_filenames ) {
-    $items = @scandir( $dir );
-    if ( ! is_array( $items ) ) {
-        return;
-    }
+$ppsc_delete_tree = function ( $dir ) use ( &$ppsc_delete_tree, $ppsc_target_real, $ppsc_allowed_extensions, $ppsc_allowed_filenames, $wp_filesystem ) {
+	$items = scandir( $dir );
+	if ( ! is_array( $items ) ) {
+		return;
+	}
 
-    foreach ( $items as $item ) {
-        if ( $item === '.' || $item === '..' ) {
-            continue;
-        }
+	foreach ( $items as $item ) {
+		if ( $item === '.' || $item === '..' ) {
+			continue;
+		}
 
-        $path = $dir . DIRECTORY_SEPARATOR . $item;
+		$path = $dir . DIRECTORY_SEPARATOR . $item;
 
-        // Resolve and normalize
-        $path_real = realpath( $path );
-        if ( $path_real === false ) {
-            // Might be a broken symlink; skip for safety.
-            continue;
-        }
-        $path_real = rtrim( str_replace('\\', '/', $path_real ), '/' );
+		// Resolve and normalize
+		$path_real = realpath( $path );
+		if ( $path_real === false ) {
+			// Might be a broken symlink; skip for safety.
+			continue;
+		}
+		$path_real = rtrim( str_replace( '\\', '/', $path_real ), '/' );
 
-        // Ensure we never operate outside target folder (symlink defense)
-        if ( strpos( $path_real, $target_real . '/' ) !== 0 && $path_real !== $target_real ) {
-            continue;
-        }
+		// Ensure we never operate outside target folder (symlink defense)
+		if ( strpos( $path_real, $ppsc_target_real . '/' ) !== 0 && $path_real !== $ppsc_target_real ) {
+			continue;
+		}
 
-        if ( is_dir( $path_real ) ) {
-            $delete_tree( $path_real );
-            @rmdir( $path_real );
-            continue;
-        }
+		if ( is_dir( $path_real ) ) {
+			$ppsc_delete_tree( $path_real );
+			$wp_filesystem->rmdir( $path_real );
+			continue;
+		}
 
-        // File deletion restrictions (extra caution)
-        $base = basename( $path_real );
-        $ext  = strtolower( pathinfo( $path_real, PATHINFO_EXTENSION ) );
+		// File deletion restrictions (extra caution)
+		$base = basename( $path_real );
+		$ext  = strtolower( pathinfo( $path_real, PATHINFO_EXTENSION ) );
 
-        $ok_name = in_array( $base, $allowed_filenames, true );
-        $ok_ext  = ( $ext !== '' && in_array( $ext, $allowed_extensions, true ) );
+		$ok_name = in_array( $base, $ppsc_allowed_filenames, true );
+		$ok_ext  = ( $ext !== '' && in_array( $ext, $ppsc_allowed_extensions, true ) );
 
-        // If it doesn't match allowed patterns, skip deletion.
-        if ( ! $ok_name && ! $ok_ext ) {
-            continue;
-        }
+		// If it doesn't match allowed patterns, skip deletion.
+		if ( ! $ok_name && ! $ok_ext ) {
+			continue;
+		}
 
-        @unlink( $path_real );
-    }
+		wp_delete_file( $path_real );
+	}
 };
 
 // Delete contents first, then remove the directory
-$delete_tree( $target_real );
-@rmdir( $target_real );
+$ppsc_delete_tree( $ppsc_target_real );
+$wp_filesystem->rmdir( $ppsc_target_real );
