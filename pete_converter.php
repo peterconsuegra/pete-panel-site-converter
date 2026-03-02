@@ -203,21 +203,16 @@ register_activation_hook(
 );
 
 /**
- * Load plugin text domain.
+ * Ensure /languages exists early.
  *
- * Prefer plugins_loaded so other plugins (or MU plugins) can set locale/filters
- * before loading translations.
+ * Note: When hosted on WordPress.org, translations under the plugin slug
+ * are loaded automatically by WordPress. No manual load_plugin_textdomain()
+ * call is needed.
  */
 add_action(
 	'plugins_loaded',
 	function () {
 		pete_psc_ensure_languages_dir();
-
-		load_plugin_textdomain(
-			PETE_PSC_TEXT_DOMAIN,
-			false,
-			dirname( plugin_basename( __FILE__ ) ) . '/languages'
-		);
 	}
 );
 
