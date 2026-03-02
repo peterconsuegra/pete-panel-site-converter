@@ -558,8 +558,7 @@ function pete_psc_stream_file_to_output( $path ) {
 		if ( $len === 0 ) {
 			break;
 		}
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary ZIP streaming must not be escaped.
-		echo $buf;
+		echo $buf; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary ZIP streaming must not be escaped.
 		$sent += $len;
 
 		if ( function_exists( 'flush' ) ) {
@@ -966,7 +965,7 @@ function pete_psc_export_view() {
 			</div>
 		<?php endif; ?>
 
-		<p class="pete-psc-intro"><?php echo esc_html__( 'Click “Start export”. The job runs in the background — feel free to keep working.', 'pete-panel-site-converter' ); ?></p>
+		<p class="pete-psc-intro"><?php echo esc_html__( 'Click “Start export”. The job runs in the background - feel free to keep working.', 'pete-panel-site-converter' ); ?></p>
 
 		<details class="pete-psc-tip">
 			<summary>
@@ -1327,7 +1326,7 @@ function pete_run_export_core( array $job ) {
 			sprintf(
 				/* translators: %s: database error message */
 				esc_html__( 'Database dump failed: %s', 'pete-panel-site-converter' ),
-				$db_error
+				esc_html( $db_error )
 			)
 		);
 	}
@@ -1521,7 +1520,7 @@ function pete_psc_rest_start_export( WP_REST_Request $req ) {
 			array(
 				'timeout'   => $timeout,
 				'blocking'  => $blocking,
-				'sslverify' => apply_filters( 'https_local_ssl_verify', true ),
+				'sslverify' => (bool) apply_filters( 'pete_psc_https_local_ssl_verify', true ),
 			)
 		);
 
