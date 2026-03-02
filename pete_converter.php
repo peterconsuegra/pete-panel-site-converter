@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name:       WordPress Migration & Backup Export (Pete Panel)
+Plugin Name:       Site Migration & Backup Export (Pete Panel)
 Plugin URI:        https://wordpress.org/plugins/pete-panel-site-converter/
-Description:       Export a WordPress site into a Pete Panel-compatible archive (files + database dump) for migration or cloning.
+Description:       Export a Site site into a Pete Panel-compatible archive (files + database dump) for migration or cloning.
 Version:           1.0.0
 Requires at least: 5.8
 Requires PHP:      7.4
