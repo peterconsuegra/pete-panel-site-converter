@@ -44,7 +44,7 @@ class Mysqldump
     const UTF8    = 'utf8';
     const UTF8MB4 = 'utf8mb4';
     const BINARY = 'binary';
-    
+
     /**
      * Database username.
      * @var string
@@ -76,12 +76,12 @@ class Mysqldump
     private $procedures = array();
     private $functions = array();
     private $events = array();
-    private $dbHandler = null;
+    protected $dbHandler = null;
     private $dbType = "";
     private $compressManager;
     private $typeAdapter;
-    private $dumpSettings = array();
-    private $pdoSettings = array();
+    protected $dumpSettings = array();
+    protected $pdoSettings = array();
     private $version;
     private $tableColumnTypes = array();
     private $transformTableRowCallable;
@@ -115,6 +115,48 @@ class Mysqldump
     private $tableWheres = array();
     private $tableLimits = array();
 
+    protected $dumpSettingsDefault = array(
+        'include-tables' => array(),
+        'exclude-tables' => array(),
+        'include-views' => array(),
+        'compress' => Mysqldump::NONE,
+        'init_commands' => array(),
+        'no-data' => array(),
+        'if-not-exists' => false,
+        'reset-auto-increment' => false,
+        'add-drop-database' => false,
+        'add-drop-table' => false,
+        'add-drop-trigger' => true,
+        'add-locks' => true,
+        'complete-insert' => false,
+        'databases' => false,
+        'default-character-set' => Mysqldump::UTF8,
+        'disable-keys' => true,
+        'extended-insert' => true,
+        'events' => false,
+        'hex-blob' => true, /* faster than escaped content */
+        'insert-ignore' => false,
+        'net_buffer_length' => self::MAXLINESIZE,
+        'no-autocommit' => true,
+        'no-create-db' => false,
+        'no-create-info' => false,
+        'lock-tables' => true,
+        'routines' => false,
+        'single-transaction' => true,
+        'skip-triggers' => false,
+        'skip-tz-utc' => false,
+        'skip-comments' => false,
+        'skip-dump-date' => false,
+        'skip-definer' => false,
+        'where' => '',
+        /* deprecated */
+        'disable-foreign-keys-check' => true
+    );
+
+    protected $pdoSettingsDefault = array(
+            PDO::ATTR_PERSISTENT => true,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        );
 
     /**
      * Constructor of Mysqldump. Note that in the case of an SQLite database
@@ -133,47 +175,6 @@ class Mysqldump
         $dumpSettings = array(),
         $pdoSettings = array()
     ) {
-        $dumpSettingsDefault = array(
-            'include-tables' => array(),
-            'exclude-tables' => array(),
-            'include-views' => array(),
-            'compress' => Mysqldump::NONE,
-            'init_commands' => array(),
-            'no-data' => array(),
-            'if-not-exists' => false,
-            'reset-auto-increment' => false,
-            'add-drop-database' => false,
-            'add-drop-table' => false,
-            'add-drop-trigger' => true,
-            'add-locks' => true,
-            'complete-insert' => false,
-            'databases' => false,
-            'default-character-set' => Mysqldump::UTF8,
-            'disable-keys' => true,
-            'extended-insert' => true,
-            'events' => false,
-            'hex-blob' => true, /* faster than escaped content */
-            'insert-ignore' => false,
-            'net_buffer_length' => self::MAXLINESIZE,
-            'no-autocommit' => true,
-            'no-create-info' => false,
-            'lock-tables' => true,
-            'routines' => false,
-            'single-transaction' => true,
-            'skip-triggers' => false,
-            'skip-tz-utc' => false,
-            'skip-comments' => false,
-            'skip-dump-date' => false,
-            'skip-definer' => false,
-            'where' => '',
-            /* deprecated */
-            'disable-foreign-keys-check' => true
-        );
-
-        $pdoSettingsDefault = array(
-            PDO::ATTR_PERSISTENT => true,
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        );
 
         $this->user = $user;
         $this->pass = $pass;
@@ -181,23 +182,20 @@ class Mysqldump
 
         // This drops MYSQL dependency, only use the constant if it's defined.
         if ("mysql" === $this->dbType) {
-            $pdoSettingsDefault[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = false;
+            $this->pdoSettingsDefault[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = false;
         }
 
-        $this->pdoSettings = array_replace_recursive($pdoSettingsDefault, $pdoSettings);
-        $this->dumpSettings = array_replace_recursive($dumpSettingsDefault, $dumpSettings);
+        $this->pdoSettings = array_replace_recursive($this->pdoSettingsDefault, $pdoSettings);
+        $this->dumpSettings = array_replace_recursive($this->dumpSettingsDefault, $dumpSettings);
         $this->dumpSettings['init_commands'][] = "SET NAMES ".$this->dumpSettings['default-character-set'];
 
         if (false === $this->dumpSettings['skip-tz-utc']) {
             $this->dumpSettings['init_commands'][] = "SET TIME_ZONE='+00:00'";
         }
 
-        $diff = array_diff(array_keys($this->dumpSettings), array_keys($dumpSettingsDefault));
+        $diff = array_diff(array_keys($this->dumpSettings), array_keys($this->dumpSettingsDefault));
         if (count($diff) > 0) {
-            $diff_str = implode(',', array_map('strval', $diff));
-            throw new Exception(
-                'Unexpected value in dumpSettings: (' . Utils::sanitizeForException($diff_str) . ')'
-            );
+            throw new Exception("Unexpected value in dumpSettings: (".implode(",", $diff).")");
         }
 
         if (!is_array($this->dumpSettings['include-tables']) ||
@@ -280,6 +278,46 @@ class Mysqldump
     }
 
     /**
+    * Import supplied SQL file
+    * @param string $path Absolute path to imported *.sql file
+    */
+    public function restore($path)
+    {
+        if(!$path || !is_file($path)){
+            throw new Exception("File {$path} does not exist.");
+        }
+
+        $handle = fopen($path , 'rb');
+
+        if(!$handle){
+            throw new Exception("Failed reading file {$path}. Check access permissions.");
+        }
+
+        if(!$this->dbHandler){
+            $this->connect();
+        }
+
+        $buffer = '';
+        while ( !feof($handle) ) {
+            $line = fgets($handle);
+
+            if (substr($line, 0, 2) == '--' || !$line) {
+                continue; // skip comments
+            }
+
+            $buffer .= $line;
+
+            // if it has a semicolon at the end, it's the end of the query
+            if (';' == substr(rtrim($line), -1, 1)) {
+                $this->dbHandler->exec($buffer);
+                $buffer = '';
+            }
+        }
+
+        fclose($handle);
+    }
+
+    /**
      * Parse DSN string and extract dbname value
      * Several examples of a DSN string
      *   mysql:host=localhost;dbname=testdb
@@ -330,7 +368,7 @@ class Mysqldump
      *
      * @return null
      */
-    private function connect()
+    protected function connect()
     {
         // Connecting with PDO.
         try {
@@ -355,21 +393,17 @@ class Mysqldump
                     $this->version = $this->dbHandler->getAttribute(PDO::ATTR_SERVER_VERSION);
                     break;
                 default:
-                    throw new Exception(
-                        'Unsupported database type (' . Utils::sanitizeForException($this->dbType) . ')'
-                    );
+                    throw new Exception("Unsupported database type (".$this->dbType.")");
             }
         } catch (PDOException $e) {
             throw new Exception(
                 "Connection to ".$this->dbType." failed with message: ".
-                Utils::sanitizeForException($e->getMessage())
+                $e->getMessage()
             );
         }
 
         if (is_null($this->dbHandler)) {
-            throw new Exception(
-                'Connection to ' . Utils::sanitizeForException($this->dbType) . ' failed'
-            );
+            throw new Exception("Connection to ".$this->dbType."failed");
         }
 
         $this->dbHandler->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_NATURAL);
@@ -398,6 +432,12 @@ class Mysqldump
 
         // Write some basic info to output file
         $this->compressManager->write($this->getDumpFileHeader());
+
+        // initiate a transaction at global level to create a consistent snapshot
+        if ($this->dumpSettings['single-transaction']) {
+            $this->dbHandler->exec($this->typeAdapter->setup_transaction());
+            $this->dbHandler->exec($this->typeAdapter->start_transaction());
+        }
 
         // Store server settings and use sanner defaults to dump
         $this->compressManager->write(
@@ -436,9 +476,7 @@ class Mysqldump
         // This check will be removed once include-tables supports regexps.
         if (0 < count($this->dumpSettings['include-tables'])) {
             $name = implode(",", $this->dumpSettings['include-tables']);
-            throw new Exception(
-                'Table (' . Utils::sanitizeForException($name) . ') not found in database'
-            );
+            throw new Exception("Table (".$name.") not found in database");
         }
 
         $this->exportTables();
@@ -452,6 +490,12 @@ class Mysqldump
         $this->compressManager->write(
             $this->typeAdapter->restore_parameters()
         );
+
+        // end transaction
+        if ($this->dumpSettings['single-transaction']) {
+            $this->dbHandler->exec($this->typeAdapter->commit_transaction());
+        }
+
         // Write some stats to output file.
         $this->compressManager->write($this->getDumpFileFooter());
         // Close output file.
@@ -480,7 +524,7 @@ class Mysqldump
             }
 
             if (!$this->dumpSettings['skip-dump-date']) {
-                $header .= "-- Date: ".Utils::dateRfc2822().PHP_EOL.PHP_EOL;
+                $header .= "-- Date: ".date('r').PHP_EOL.PHP_EOL;
             }
         }
         return $header;
@@ -497,7 +541,7 @@ class Mysqldump
         if (!$this->dumpSettings['skip-comments']) {
             $footer .= '-- Dump completed';
             if (!$this->dumpSettings['skip-dump-date']) {
-                $footer .= ' on: '.Utils::dateRfc2822();
+                $footer .= ' on: '.date('r');
             }
             $footer .= PHP_EOL;
         }
@@ -662,6 +706,8 @@ class Mysqldump
      */
     private function exportTables()
     {
+
+
         // Exporting tables one by one
         foreach ($this->tables as $table) {
             if ($this->matches($table, $this->dumpSettings['exclude-tables'])) {
@@ -831,7 +877,7 @@ class Mysqldump
     {
         if (!$this->dumpSettings['skip-comments']) {
             $ret = "--".PHP_EOL.
-                "-- Stand-In structure for view `${viewName}`".PHP_EOL.
+                "-- Stand-In structure for view `{$viewName}`".PHP_EOL.
                 "--".PHP_EOL.PHP_EOL;
             $this->compressManager->write($ret);
         }
@@ -863,7 +909,7 @@ class Mysqldump
     {
         $ret = array();
         foreach ($this->tableColumnTypes[$viewName] as $k => $v) {
-            $ret[] = "`${k}` ${v['type_sql']}";
+            $ret[] = "`{$k}` {$v['type_sql']}";
         }
         $ret = implode(PHP_EOL.",", $ret);
 
@@ -884,7 +930,7 @@ class Mysqldump
     {
         if (!$this->dumpSettings['skip-comments']) {
             $ret = "--".PHP_EOL.
-                "-- View structure for view `${viewName}`".PHP_EOL.
+                "-- View structure for view `{$viewName}`".PHP_EOL.
                 "--".PHP_EOL.PHP_EOL;
             $this->compressManager->write($ret);
         }
@@ -1038,7 +1084,7 @@ class Mysqldump
             return "NULL";
         } elseif ($this->dumpSettings['hex-blob'] && $colType['is_blob']) {
             if ($colType['type'] == 'bit' || !empty($colValue)) {
-                return "0x${colValue}";
+                return "0x{$colValue}";
             } else {
                 return "''";
             }
@@ -1099,7 +1145,6 @@ class Mysqldump
         $this->prepareListValues($tableName);
 
         $onlyOnce = true;
-        $lineSize = 0;
 
         // colStmt is used to form a query to obtain row values
         $colStmt = $this->getColumnStmt($tableName);
@@ -1129,35 +1174,33 @@ class Mysqldump
         $ignore = $this->dumpSettings['insert-ignore'] ? '  IGNORE' : '';
 
         $count = 0;
+        $line = '';
         foreach ($resultSet as $row) {
             $count++;
             $vals = $this->prepareColumnValues($tableName, $row);
             if ($onlyOnce || !$this->dumpSettings['extended-insert']) {
                 if ($this->dumpSettings['complete-insert']) {
-                    $lineSize += $this->compressManager->write(
-                        "INSERT$ignore INTO `$tableName` (".
+                    $line .= "INSERT$ignore INTO `$tableName` (".
                         implode(", ", $colNames).
-                        ") VALUES (".implode(",", $vals).")"
-                    );
+                        ") VALUES (".implode(",", $vals).")";
                 } else {
-                    $lineSize += $this->compressManager->write(
-                        "INSERT$ignore INTO `$tableName` VALUES (".implode(",", $vals).")"
-                    );
+                    $line .= "INSERT$ignore INTO `$tableName` VALUES (".implode(",", $vals).")";
                 }
                 $onlyOnce = false;
             } else {
-                $lineSize += $this->compressManager->write(",(".implode(",", $vals).")");
+                $line .= ",(".implode(",", $vals).")";
             }
-            if (($lineSize > $this->dumpSettings['net_buffer_length']) ||
+            if ((strlen($line) > $this->dumpSettings['net_buffer_length']) ||
                     !$this->dumpSettings['extended-insert']) {
                 $onlyOnce = true;
-                $lineSize = $this->compressManager->write(";".PHP_EOL);
+                $this->compressManager->write($line . ";".PHP_EOL);
+                $line = '';
             }
         }
         $resultSet->closeCursor();
 
-        if (!$onlyOnce) {
-            $this->compressManager->write(";".PHP_EOL);
+        if ('' !== $line) {
+            $this->compressManager->write($line. ";".PHP_EOL);
         }
 
         $this->endListValues($tableName, $count);
@@ -1182,11 +1225,6 @@ class Mysqldump
                 "-- Dumping data for table `$tableName`".PHP_EOL.
                 "--".PHP_EOL.PHP_EOL
             );
-        }
-
-        if ($this->dumpSettings['single-transaction']) {
-            $this->dbHandler->exec($this->typeAdapter->setup_transaction());
-            $this->dbHandler->exec($this->typeAdapter->start_transaction());
         }
 
         if ($this->dumpSettings['lock-tables'] && !$this->dumpSettings['single-transaction']) {
@@ -1237,10 +1275,6 @@ class Mysqldump
             );
         }
 
-        if ($this->dumpSettings['single-transaction']) {
-            $this->dbHandler->exec($this->typeAdapter->commit_transaction());
-        }
-
         if ($this->dumpSettings['lock-tables'] && !$this->dumpSettings['single-transaction']) {
             $this->typeAdapter->unlock_table($tableName);
         }
@@ -1275,15 +1309,17 @@ class Mysqldump
     {
         $colStmt = array();
         foreach ($this->tableColumnTypes[$tableName] as $colName => $colType) {
-            if ($colType['type'] == 'bit' && $this->dumpSettings['hex-blob']) {
-                $colStmt[] = "LPAD(HEX(`${colName}`),2,'0') AS `${colName}`";
-            } elseif ($colType['is_blob'] && $this->dumpSettings['hex-blob']) {
-                $colStmt[] = "HEX(`${colName}`) AS `${colName}`";
-            } elseif ($colType['is_virtual']) {
+            if ($colType['is_virtual']) {
                 $this->dumpSettings['complete-insert'] = true;
                 continue;
+            } elseif ($colType['type'] == 'bit' && $this->dumpSettings['hex-blob']) {
+                $colStmt[] = "LPAD(HEX(`{$colName}`),2,'0') AS `{$colName}`";
+            } elseif ($colType['type'] == 'double' && PHP_VERSION_ID > 80100) {
+                $colStmt[] = sprintf("CONCAT(`%s`) AS `%s`", $colName, $colName);
+            } elseif ($colType['is_blob'] && $this->dumpSettings['hex-blob']) {
+                $colStmt[] = "HEX(`{$colName}`) AS `{$colName}`";
             } else {
-                $colStmt[] = "`${colName}`";
+                $colStmt[] = "`{$colName}`";
             }
         }
 
@@ -1305,54 +1341,10 @@ class Mysqldump
                 $this->dumpSettings['complete-insert'] = true;
                 continue;
             } else {
-                $colNames[] = "`${colName}`";
+                $colNames[] = "`{$colName}`";
             }
         }
         return $colNames;
-    }
-}
-
-/**
- * Internal helpers.
- *
- * This file is a bundled library. Plugin Check (WPCS) expects escaping/sanitizing
- * for dynamic values in exception messages and prefers wp_date() over date().
- */
-final class Utils
-{
-    /**
-     * Sanitize values before embedding them into exception messages.
-     *
-     * @param mixed $value
-     * @return string
-     */
-    public static function sanitizeForException($value)
-    {
-        if (is_array($value) || is_object($value)) {
-            $value = function_exists('wp_json_encode') ? wp_json_encode($value) : json_encode($value);
-        }
-
-        $value = (string) $value;
-
-        if (function_exists('wp_strip_all_tags')) {
-            $value = wp_strip_all_tags($value);
-        }
-
-        if (function_exists('sanitize_text_field')) {
-            $value = sanitize_text_field($value);
-        }
-
-        return $value;
-    }
-
-    /**
-     * RFC 2822 date string using WP timezone when available.
-     *
-     * @return string
-     */
-    public static function dateRfc2822()
-    {
-        return function_exists('wp_date') ? wp_date('r') : gmdate('r');
     }
 }
 
@@ -1381,7 +1373,6 @@ abstract class CompressMethod
 
 abstract class CompressManagerFactory
 {
-
     /**
      * @param string $c
      * @return CompressBzip2|CompressGzip|CompressNone
@@ -1390,9 +1381,7 @@ abstract class CompressManagerFactory
     {
         $c = ucfirst(strtolower($c));
         if (!CompressMethod::isValid($c)) {
-            throw new Exception(
-                'Compression method (' . Utils::sanitizeForException($c) . ') is not defined yet'
-            );
+            throw new Exception("Compression method ($c) is not defined yet");
         }
 
         $method = __NAMESPACE__."\\"."Compress".$c;
@@ -1417,7 +1406,7 @@ class CompressBzip2 extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = bzopen($filename, "w"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzopen
+        $this->fileHandler = bzopen($filename, "w");
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1427,7 +1416,7 @@ class CompressBzip2 extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = bzwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzwrite
+        $bytesWritten = bzwrite($this->fileHandler, $str);
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1436,7 +1425,7 @@ class CompressBzip2 extends CompressManagerFactory
 
     public function close()
     {
-        return bzclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_bzclose
+        return bzclose($this->fileHandler);
     }
 }
 
@@ -1456,7 +1445,7 @@ class CompressGzip extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = gzopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzopen
+        $this->fileHandler = gzopen($filename, "wb");
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1466,7 +1455,7 @@ class CompressGzip extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = gzwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzwrite
+        $bytesWritten = gzwrite($this->fileHandler, $str);
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1475,7 +1464,7 @@ class CompressGzip extends CompressManagerFactory
 
     public function close()
     {
-        return gzclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_gzclose
+        return gzclose($this->fileHandler);
     }
 }
 
@@ -1488,7 +1477,7 @@ class CompressNone extends CompressManagerFactory
      */
     public function open($filename)
     {
-        $this->fileHandler = fopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+        $this->fileHandler = fopen($filename, "wb");
         if (false === $this->fileHandler) {
             throw new Exception("Output file is not writable");
         }
@@ -1498,7 +1487,7 @@ class CompressNone extends CompressManagerFactory
 
     public function write($str)
     {
-        $bytesWritten = fwrite($this->fileHandler, $str); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
+        $bytesWritten = fwrite($this->fileHandler, $str);
         if (false === $bytesWritten) {
             throw new Exception("Writting to file failed! Probably, there is no more free space left?");
         }
@@ -1507,7 +1496,7 @@ class CompressNone extends CompressManagerFactory
 
     public function close()
     {
-        return fclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+        return fclose($this->fileHandler);
     }
 }
 
@@ -1522,7 +1511,7 @@ class CompressGzipstream extends CompressManagerFactory
      */
     public function open($filename)
     {
-    $this->fileHandler = fopen($filename, "wb"); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+    $this->fileHandler = fopen($filename, "wb");
     if (false === $this->fileHandler) {
         throw new Exception("Output file is not writable");
     }
@@ -1534,7 +1523,7 @@ class CompressGzipstream extends CompressManagerFactory
     public function write($str)
     {
 
-    $bytesWritten = fwrite($this->fileHandler, deflate_add($this->compressContext, $str, ZLIB_NO_FLUSH)); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
+    $bytesWritten = fwrite($this->fileHandler, deflate_add($this->compressContext, $str, ZLIB_NO_FLUSH));
     if (false === $bytesWritten) {
         throw new Exception("Writting to file failed! Probably, there is no more free space left?");
     }
@@ -1543,8 +1532,8 @@ class CompressGzipstream extends CompressManagerFactory
 
     public function close()
     {
-    fwrite($this->fileHandler, deflate_add($this->compressContext, '', ZLIB_FINISH)); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
-    return fclose($this->fileHandler); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+    fwrite($this->fileHandler, deflate_add($this->compressContext, '', ZLIB_FINISH));
+    return fclose($this->fileHandler);
     }
 }
 
@@ -1586,9 +1575,7 @@ abstract class TypeAdapterFactory
     {
         $c = ucfirst(strtolower($c));
         if (!TypeAdapter::isValid($c)) {
-            throw new Exception(
-                'Database type support for (' . Utils::sanitizeForException($c) . ') not yet available'
-            );
+            throw new Exception("Database type support for ($c) not yet available");
         }
         $method = __NAMESPACE__."\\"."TypeAdapter".$c;
         return new $method($dbHandler, $dumpSettings);
@@ -1700,7 +1687,7 @@ abstract class TypeAdapterFactory
 
         $args = func_get_args();
 
-        return "pragma table_info(${args[0]})";
+        return "pragma table_info({$args[0]})";
     }
 
     public function show_procedures()
@@ -1870,6 +1857,10 @@ class TypeAdapterMysql extends TypeAdapterFactory
 
     public function databases()
     {
+        if ($this->dumpSettings['no-create-db']) {
+           return "";
+        }
+
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
         $databaseName = $args[0];
@@ -1883,10 +1874,10 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $resultSet->closeCursor();
         $ret = "";
 
-        $ret .= "CREATE DATABASE /*!32312 IF NOT EXISTS*/ `${databaseName}`".
-            " /*!40100 DEFAULT CHARACTER SET ${characterSet} ".
-            " COLLATE ${collationDb} */;".PHP_EOL.PHP_EOL.
-            "USE `${databaseName}`;".PHP_EOL.PHP_EOL;
+        $ret .= "CREATE DATABASE /*!32312 IF NOT EXISTS*/ `{$databaseName}`".
+            " /*!40100 DEFAULT CHARACTER SET {$characterSet} ".
+            " COLLATE {$collationDb} */;".PHP_EOL.PHP_EOL.
+            "USE `{$databaseName}`;".PHP_EOL.PHP_EOL;
 
         return $ret;
     }
@@ -1933,10 +1924,10 @@ class TypeAdapterMysql extends TypeAdapterFactory
             $replace = "";
             $createTable = preg_replace($match, $replace, $createTable);
         }
-        
+
 		if ($this->dumpSettings['if-not-exists'] ) {
 			$createTable = preg_replace('/^CREATE TABLE/', 'CREATE TABLE IF NOT EXISTS', $createTable);
-        }        
+        }
 
         $ret = "/*!40101 SET @saved_cs_client     = @@character_set_client */;".PHP_EOL.
             "/*!40101 SET character_set_client = ".$this->dumpSettings['default-character-set']." */;".PHP_EOL.
@@ -1959,7 +1950,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
 
         if ($viewStmtReplaced = preg_replace(
             '/^(CREATE(?:\s+ALGORITHM=(?:UNDEFINED|MERGE|TEMPTABLE))?)\s+('
-            .self::DEFINER_RE.'(?:\s+SQL SECURITY DEFINER|INVOKER)?)?\s+(VIEW .+)$/',
+            .self::DEFINER_RE.'(?:\s+SQL SECURITY (?:DEFINER|INVOKER))?)?\s+(VIEW .+)$/',
             '/*!50001 \1 */'.PHP_EOL.$definerStr.'/*!50001 \3 */',
             $viewStmt,
             1
@@ -2127,7 +2118,8 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $args = func_get_args();
         return "SELECT TABLE_NAME AS tbl_name ".
             "FROM INFORMATION_SCHEMA.TABLES ".
-            "WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA='${args[0]}'";
+            "WHERE TABLE_TYPE='BASE TABLE' AND TABLE_SCHEMA='{$args[0]}' ".
+            "ORDER BY TABLE_NAME";
     }
 
     public function show_views()
@@ -2136,21 +2128,22 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $args = func_get_args();
         return "SELECT TABLE_NAME AS tbl_name ".
             "FROM INFORMATION_SCHEMA.TABLES ".
-            "WHERE TABLE_TYPE='VIEW' AND TABLE_SCHEMA='${args[0]}'";
+            "WHERE TABLE_TYPE='VIEW' AND TABLE_SCHEMA='{$args[0]}' ".
+            "ORDER BY TABLE_NAME";
     }
 
     public function show_triggers()
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "SHOW TRIGGERS FROM `${args[0]}`;";
+        return "SHOW TRIGGERS FROM `{$args[0]}`;";
     }
 
     public function show_columns()
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "SHOW COLUMNS FROM `${args[0]}`;";
+        return "SHOW COLUMNS FROM `{$args[0]}`;";
     }
 
     public function show_procedures()
@@ -2159,7 +2152,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $args = func_get_args();
         return "SELECT SPECIFIC_NAME AS procedure_name ".
             "FROM INFORMATION_SCHEMA.ROUTINES ".
-            "WHERE ROUTINE_TYPE='PROCEDURE' AND ROUTINE_SCHEMA='${args[0]}'";
+            "WHERE ROUTINE_TYPE='PROCEDURE' AND ROUTINE_SCHEMA='{$args[0]}'";
     }
 
     public function show_functions()
@@ -2168,7 +2161,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $args = func_get_args();
         return "SELECT SPECIFIC_NAME AS function_name ".
             "FROM INFORMATION_SCHEMA.ROUTINES ".
-            "WHERE ROUTINE_TYPE='FUNCTION' AND ROUTINE_SCHEMA='${args[0]}'";
+            "WHERE ROUTINE_TYPE='FUNCTION' AND ROUTINE_SCHEMA='{$args[0]}'";
     }
 
     /**
@@ -2183,7 +2176,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $args = func_get_args();
         return "SELECT EVENT_NAME AS event_name ".
             "FROM INFORMATION_SCHEMA.EVENTS ".
-            "WHERE EVENT_SCHEMA='${args[0]}'";
+            "WHERE EVENT_SCHEMA='{$args[0]}'";
     }
 
     public function setup_transaction()
@@ -2207,7 +2200,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return $this->dbHandler->exec("LOCK TABLES `${args[0]}` READ LOCAL");
+        return $this->dbHandler->exec("LOCK TABLES `{$args[0]}` READ LOCAL");
     }
 
     public function unlock_table()
@@ -2219,7 +2212,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "LOCK TABLES `${args[0]}` WRITE;".PHP_EOL;
+        return "LOCK TABLES `{$args[0]}` WRITE;".PHP_EOL;
     }
 
     public function end_add_lock_table()
@@ -2231,7 +2224,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "/*!40000 ALTER TABLE `${args[0]}` DISABLE KEYS */;".
+        return "/*!40000 ALTER TABLE `{$args[0]}` DISABLE KEYS */;".
             PHP_EOL;
     }
 
@@ -2239,7 +2232,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "/*!40000 ALTER TABLE `${args[0]}` ENABLE KEYS */;".
+        return "/*!40000 ALTER TABLE `{$args[0]}` ENABLE KEYS */;".
             PHP_EOL;
     }
 
@@ -2257,7 +2250,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "/*!40000 DROP DATABASE IF EXISTS `${args[0]}`*/;".
+        return "/*!40000 DROP DATABASE IF EXISTS `{$args[0]}`*/;".
             PHP_EOL.PHP_EOL;
     }
 
@@ -2265,22 +2258,22 @@ class TypeAdapterMysql extends TypeAdapterFactory
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "DROP TRIGGER IF EXISTS `${args[0]}`;".PHP_EOL;
+        return "DROP TRIGGER IF EXISTS `{$args[0]}`;".PHP_EOL;
     }
 
     public function drop_table()
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "DROP TABLE IF EXISTS `${args[0]}`;".PHP_EOL;
+        return "DROP TABLE IF EXISTS `{$args[0]}`;".PHP_EOL;
     }
 
     public function drop_view()
     {
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
-        return "DROP TABLE IF EXISTS `${args[0]}`;".PHP_EOL.
-                "/*!50001 DROP VIEW IF EXISTS `${args[0]}`*/;".PHP_EOL;
+        return "DROP TABLE IF EXISTS `{$args[0]}`;".PHP_EOL.
+                "/*!50001 DROP VIEW IF EXISTS `{$args[0]}`*/;".PHP_EOL;
     }
 
     public function getDatabaseHeader()
@@ -2288,7 +2281,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
         $this->check_parameters(func_num_args(), $expected_num_args = 1, __METHOD__);
         $args = func_get_args();
         return "--".PHP_EOL.
-            "-- Current Database: `${args[0]}`".PHP_EOL.
+            "-- Current Database: `{$args[0]}`".PHP_EOL.
             "--".PHP_EOL.PHP_EOL;
     }
 
@@ -2379,9 +2372,7 @@ class TypeAdapterMysql extends TypeAdapterFactory
     private function check_parameters($num_args, $expected_num_args, $method_name)
     {
         if ($num_args != $expected_num_args) {
-            throw new Exception(
-                'Unexpected parameter passed to ' . Utils::sanitizeForException($method_name)
-            );
+            throw new Exception("Unexpected parameter passed to $method_name");
         }
         return;
     }
