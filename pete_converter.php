@@ -262,7 +262,15 @@ if ( ! function_exists( 'pete_psc_die' ) ) {
 	 * @param string $title
 	 */
 	function pete_psc_die( $message, $code = 403, $title = '' ) {
-		$code  = (int) $code;
+
+		// Strict integer validation (Plugin Check compliant).
+		$code = absint( $code );
+
+		// Ensure a valid HTTP status range.
+		if ( $code < 100 || $code > 599 ) {
+			$code = 500;
+		}
+
 		$title = (string) $title;
 
 		if ( $title === '' ) {
@@ -272,7 +280,7 @@ if ( ! function_exists( 'pete_psc_die' ) ) {
 		wp_die(
 			esc_html( (string) $message ),
 			esc_html( $title ),
-			array( 'response' => $code )
+			array( 'response' => esc_html($code) )
 		);
 	}
 }
