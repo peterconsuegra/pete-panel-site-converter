@@ -51,6 +51,18 @@
   margin-top: 12px;
 }
 
+/* New: Export location label (above download button) */
+.pete-psc-location {
+  margin: 0 0 10px 0;
+  padding: 8px 10px;
+  background: #f6f7f7;
+  border: 1px solid #dcdcde;
+  border-radius: 4px;
+  max-width: 820px;
+  color: #1d2327;
+  word-break: break-word;
+}
+
 /* Optional: error box if you ever render server-side errors */
 .pete-psc-error {
   margin-top: 10px;

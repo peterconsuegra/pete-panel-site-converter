@@ -280,9 +280,33 @@ if ( ! function_exists( 'pete_psc_die' ) ) {
 		wp_die(
 			esc_html( (string) $message ),
 			esc_html( $title ),
-			array( 'response' => esc_html($code) )
+			array( 'response' => esc_html( $code ) )
 		);
 	}
+}
+
+/**
+ * Convert an absolute path into a nicer display path.
+ * Prefer showing relative to ABSPATH when possible.
+ *
+ * @param string $abs
+ * @return string
+ */
+function pete_psc_pretty_path( $abs ) {
+	$abs = (string) $abs;
+	if ( $abs === '' ) {
+		return '';
+	}
+
+	$abs_norm  = wp_normalize_path( $abs );
+	$root_norm = wp_normalize_path( trailingslashit( ABSPATH ) );
+
+	if ( strpos( $abs_norm, $root_norm ) === 0 ) {
+		$rel = ltrim( substr( $abs_norm, strlen( $root_norm ) ), '/' );
+		return '/' . $rel;
+	}
+
+	return $abs_norm;
 }
 
 /**
@@ -1429,6 +1453,8 @@ function pete_run_export_core( array $job ) {
 		'id'            => $id,
 		'url'           => $base_url,
 		'download_name' => $download_name,
+		'zip_path'      => $zipPath,
+		'base_dir'      => $baseDirPath,
 	);
 }
 
@@ -1486,6 +1512,8 @@ function pete_psc_rest_start_export( WP_REST_Request $req ) {
 		'download_name' => null,
 		'download_id'   => null,
 		'download_url'  => null,
+		'zip_path'      => null,
+		'base_dir'      => null,
 	);
 
 	set_transient( 'pete_export_job_' . $job_id, $state, HOUR_IN_SECONDS );
@@ -1582,6 +1610,15 @@ function pete_psc_rest_export_status( WP_REST_Request $req ) {
 		);
 	}
 
+	// New: provide an admin-only label showing where the ZIP is stored on the server.
+	if ( ! empty( $state['zip_path'] ) ) {
+		$state['zip_location_label'] = sprintf(
+			/* translators: %s: server path to export zip */
+			__( 'Export location: %s', 'pete-panel-site-converter' ),
+			pete_psc_pretty_path( (string) $state['zip_path'] )
+		);
+	}
+
 	return $state;
 }
 
@@ -1617,7 +1654,9 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 		$state['done']          = true;
 		$state['download_id']   = isset( $res['id'] ) ? $res['id'] : '';
 		$state['download_url']  = isset( $res['url'] ) ? $res['url'] : '';
-		$state['download_name'] = isset( $res['download_name'] ) ? $res['download_name'] : null;
+		$state['download_name'] = isset( $res['download_name'] ) ? (string) $res['download_name'] : null;
+		$state['zip_path']      = isset( $res['zip_path'] ) ? (string) $res['zip_path'] : '';
+		$state['base_dir']      = isset( $res['base_dir'] ) ? (string) $res['base_dir'] : '';
 		$state['message']       = __( 'Ready', 'pete-panel-site-converter' );
 		$state['progress']      = 100;
 		set_transient( $key, $state, HOUR_IN_SECONDS );
@@ -1696,7 +1735,9 @@ add_action(
 			$state['done']          = true;
 			$state['download_id']   = isset( $res['id'] ) ? $res['id'] : '';
 			$state['download_url']  = isset( $res['url'] ) ? $res['url'] : '';
-			$state['download_name'] = isset( $res['download_name'] ) ? $res['download_name'] : null;
+			$state['download_name'] = isset( $res['download_name'] ) ? (string) $res['download_name'] : null;
+			$state['zip_path']      = isset( $res['zip_path'] ) ? (string) $res['zip_path'] : '';
+			$state['base_dir']      = isset( $res['base_dir'] ) ? (string) $res['base_dir'] : '';
 			$state['message']       = __( 'Ready', 'pete-panel-site-converter' );
 			$state['progress']      = 100;
 

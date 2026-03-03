@@ -39,13 +39,21 @@
     downloadWrap.innerHTML = "";
   }
 
-  function setDownload(href, label) {
+  function setDownload(href, label, locationLabel) {
+    downloadWrap.innerHTML = "";
+
+    if (locationLabel) {
+      const p = document.createElement("p");
+      p.className = "pete-psc-location";
+      p.textContent = locationLabel;
+      downloadWrap.appendChild(p);
+    }
+
     const a = document.createElement("a");
     a.href = href;
     a.className = "button button-primary";
     a.textContent = label || t("download_default", "Download export");
 
-    downloadWrap.innerHTML = "";
     downloadWrap.appendChild(a);
   }
 
@@ -128,7 +136,7 @@
     }
 
     try {
-      setProgress( Math.max(parseInt(barFill.style.width, 10) || 3, 3), t("cron_blocked", "Cron seems blocked. Running export directly…") );
+      setProgress(Math.max(parseInt(barFill.style.width, 10) || 3, 3), t("cron_blocked", "Cron seems blocked. Running export directly…"));
       await restJson(makeRunUrl(jobId), { method: "POST" });
       return now;
     } catch (e) {
@@ -178,7 +186,11 @@
 
         // The status endpoint in PHP sets `download` as nonce-protected URL.
         if (st.download) {
-          setDownload(String(st.download), st.download_name || t("download_default", "Download export"));
+          setDownload(
+            String(st.download),
+            st.download_name || t("download_default", "Download export"),
+            st.zip_location_label ? String(st.zip_location_label) : ""
+          );
         } else {
           setError(t("download_fallback", "Export finished, but download link is missing. Please refresh this page."));
         }
