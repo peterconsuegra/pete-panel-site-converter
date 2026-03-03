@@ -31,9 +31,6 @@
     barFill.style.width = safe + "%";
     progressText.textContent = msg || "";
 
-    // IMPORTANT: .pete-psc-progress is hidden via CSS (display:none).
-    // progressWrap.style.display checks inline style only (usually empty),
-    // so we must check computed style to reliably show the progress UI.
     if (window.getComputedStyle(progressWrap).display === "none") {
       progressWrap.style.display = "block";
     }
@@ -87,7 +84,6 @@
 
     const res = await fetch(url, Object.assign({}, opts || {}, { headers }));
 
-    // Read text first, then parse JSON if possible (handles empty bodies / HTML)
     const raw = await res.text();
     let data = null;
     if (raw) {
@@ -127,9 +123,8 @@
     return restRoot() + "pete/v1/export/" + encodeURIComponent(jobId) + "/run";
   }
 
-  // Polling + stall detection
   const POLL_MS = 2500;
-  const STALL_MS = 45000; // 45s without any progress change -> attempt force-run.
+  const STALL_MS = 45000;
   const MIN_POLLS_BEFORE_FORCE = 6;
   const FORCE_RUN_COOLDOWN_MS = 60000;
 
@@ -147,7 +142,6 @@
       await restJson(makeRunUrl(jobId), { method: "POST" });
       return now;
     } catch (e) {
-      // If force-run fails, keep polling; status endpoint will show error eventually.
       return forceRunAttemptedAt;
     }
   }
@@ -165,7 +159,6 @@
       try {
         st = await restJson(makeStatusUrl(jobId), { method: "GET" });
       } catch (err) {
-        // transient errors: keep going a bit
         const shownPct = Math.max(lastPct, 5);
         setProgress(shownPct, t("error_prefix", "Error:") + " " + err.message);
         await sleep(POLL_MS);
@@ -182,7 +175,6 @@
 
       setProgress(Number.isNaN(pct) ? Math.max(lastPct, 5) : pct, msg || t("working", "Working…"));
 
-      // If done, render download or error.
       if (st && st.done) {
         if (st.error) {
           setError(t("export_failed", "Export failed:") + " " + String(st.error));
@@ -191,7 +183,6 @@
           return;
         }
 
-        // The status endpoint in PHP sets `download` as nonce-protected URL.
         if (st.download) {
           setDownload(
             String(st.download),
@@ -207,11 +198,9 @@
         return;
       }
 
-      // Stall detection -> force-run fallback
       const stalled = (Date.now() - lastChangeAt) > STALL_MS;
       if (stalled && polls >= MIN_POLLS_BEFORE_FORCE) {
         forceRunAttemptedAt = await maybeForceRun(jobId, forceRunAttemptedAt);
-        // Reset stall timer slightly to avoid tight loops
         lastChangeAt = Date.now();
       }
 

@@ -697,110 +697,51 @@ function pete_psc_is_excluded_relpath( $rel, array $excludes ) {
 }
 
 /**
- * Stream copy a file to destination with explicit error handling.
+ * Decide if a file should be included in the export, and return its relative path if included.
  *
- * @param string $src
- * @param string $dest
- * @return int Bytes written
+ * @param string $full_real Absolute real file path (normalized).
+ * @param string $site_root_real Absolute real site root path (normalized, trailing slash).
+ * @param string $plugin_norm Normalized plugin dir (trailing slash) to exclude.
+ * @param string $export_norm Normalized export dir (trailing slash) to exclude.
+ * @param array  $excludes Exclusion config.
+ * @return string|false Relative path (forward slashes) if included; false if excluded.
  */
-function pete_psc_stream_copy( $src, $dest ) {
-	$src  = (string) $src;
-	$dest = (string) $dest;
+function pete_psc_export_relpath_if_included( $full_real, $site_root_real, $plugin_norm, $export_norm, array $excludes ) {
+	$full_real = wp_normalize_path( (string) $full_real );
 
-	$fsrc = fopen( $src, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-	if ( ! $fsrc ) {
-		pete_psc_log( 'fopen failed (src) during stream_copy', array( 'src' => $src ) );
-		return 0;
+	// Must stay within site root.
+	$full_norm_slash = trailingslashit( $full_real );
+	if ( strpos( $full_norm_slash, $site_root_real ) !== 0 ) {
+		return false;
 	}
 
-	$dir = dirname( $dest );
-	if ( ! wp_mkdir_p( $dir ) ) {
-		pete_psc_log( 'wp_mkdir_p failed (dest dir) during stream_copy', array( 'dir' => $dir, 'dest' => $dest ) );
-		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-		return 0;
+	// Exclude plugin dir and export dir.
+	if ( $plugin_norm && strpos( $full_norm_slash, $plugin_norm ) === 0 ) {
+		return false;
+	}
+	if ( $export_norm && strpos( $full_norm_slash, $export_norm ) === 0 ) {
+		return false;
 	}
 
-	$fdest = fopen( $dest, 'wb+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-	if ( ! $fdest ) {
-		pete_psc_log( 'fopen failed (dest) during stream_copy', array( 'dest' => $dest ) );
-		fclose( $fsrc ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-		return 0;
+	$rel = ltrim( substr( $full_real, strlen( $site_root_real ) ), '/' );
+	$rel = ltrim( str_replace( '\\', '/', $rel ), '/' );
+
+	if ( pete_psc_is_excluded_relpath( $rel, $excludes ) ) {
+		return false;
 	}
 
-	$len = stream_copy_to_stream( $fsrc, $fdest );
-	if ( $len === false ) {
-		pete_psc_log( 'stream_copy_to_stream failed', array( 'src' => $src, 'dest' => $dest ) );
-		$len = 0;
-	}
-
-	fclose( $fsrc );  // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-	fclose( $fdest ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-
-	return (int) $len;
+	return $rel;
 }
 
 /**
- * Recursively remove directory with logging (best-effort).
- * Prefers WP_Filesystem recursive delete if available.
- *
- * @param string $dir
- * @return void
- */
-function pete_psc_rrmdir( $dir ) {
-	$dir = (string) $dir;
-
-	if ( $dir === '' ) {
-		return;
-	}
-
-	if ( ! is_dir( $dir ) ) {
-		return;
-	}
-
-	$fs = pete_psc_get_filesystem();
-	if ( $fs ) {
-		$ok = $fs->delete( $dir, true, 'd' );
-		if ( ! $ok ) {
-			pete_psc_log( 'WP_Filesystem recursive delete failed; falling back to manual rrmdir', array( 'dir' => $dir ) );
-		} else {
-			return;
-		}
-	}
-
-	$items = scandir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_scandir
-	if ( $items === false ) {
-		pete_psc_log( 'scandir failed during rrmdir', array( 'dir' => $dir ) );
-		return;
-	}
-
-	foreach ( $items as $object ) {
-		if ( $object === '.' || $object === '..' ) {
-			continue;
-		}
-		$path = $dir . '/' . $object;
-		if ( is_dir( $path ) ) {
-			pete_psc_rrmdir( $path );
-		} else {
-			pete_psc_unlink( $path, 'rrmdir' );
-		}
-	}
-
-	pete_psc_rmdir( $dir, 'rrmdir' );
-}
-
-/**
- * NEW: Count how many eligible files will be added from site root.
- *
- * This enables a real progress bar while building the ZIP.
- * We count only files (not directories) because ZipArchive::addFile()
- * is what takes time and what users care about.
+ * Count how many files will be added to the ZIP (for accurate progress reporting).
  *
  * @param string $site_root
  * @param string $exclude_plugin_dir_real
  * @param string $exclude_export_dir_real
  * @return int
  */
-function pete_psc_count_site_root_files( $site_root, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '' ) {
+function pete_psc_count_site_files_for_zip( $site_root, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '' ) {
 	$site_root      = trailingslashit( (string) $site_root );
 	$site_root_real = pete_psc_realpath( $site_root, 'count_site_root' );
 	if ( ! $site_root_real ) {
@@ -814,52 +755,36 @@ function pete_psc_count_site_root_files( $site_root, $exclude_plugin_dir_real = 
 	$excludes = pete_psc_get_default_export_excludes();
 	$count    = 0;
 
-	try {
-		$it = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( $site_root_real, FilesystemIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::SELF_FIRST
-		);
+	$it = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $site_root_real, FilesystemIterator::SKIP_DOTS ),
+		RecursiveIteratorIterator::SELF_FIRST
+	);
 
-		foreach ( $it as $info ) {
-			/** @var SplFileInfo $info */
-			$full = $info->getPathname();
+	foreach ( $it as $info ) {
+		/** @var SplFileInfo $info */
+		$full = $info->getPathname();
 
-			if ( is_link( $full ) ) {
-				continue;
-			}
-
-			$full_real = pete_psc_realpath( $full, 'count_item' );
-			if ( ! $full_real ) {
-				continue;
-			}
-			$full_real = wp_normalize_path( $full_real );
-
-			$full_norm = trailingslashit( $full_real );
-			if ( strpos( $full_norm, $site_root_real ) !== 0 ) {
-				continue;
-			}
-
-			if ( $plugin_norm && strpos( $full_norm, $plugin_norm ) === 0 ) {
-				continue;
-			}
-			if ( $export_norm && strpos( $full_norm, $export_norm ) === 0 ) {
-				continue;
-			}
-
-			$rel = ltrim( substr( $full_real, strlen( $site_root_real ) ), '/' );
-			$rel = ltrim( str_replace( '\\', '/', $rel ), '/' );
-
-			if ( pete_psc_is_excluded_relpath( $rel, $excludes ) ) {
-				continue;
-			}
-
-			if ( $info->isFile() ) {
-				$count++;
-			}
+		// Skip symlinks for safety.
+		if ( is_link( $full ) ) {
+			continue;
 		}
-	} catch ( Throwable $e ) {
-		pete_psc_log( 'Counting files failed', array( 'err' => $e->getMessage() ) );
-		return 0;
+
+		// Only count files (directories are created implicitly).
+		if ( $info->isDir() ) {
+			continue;
+		}
+
+		$full_real = pete_psc_realpath( $full, 'count_item' );
+		if ( ! $full_real ) {
+			continue;
+		}
+
+		$rel = pete_psc_export_relpath_if_included( $full_real, $site_root_real, $plugin_norm, $export_norm, $excludes );
+		if ( $rel === false ) {
+			continue;
+		}
+
+		$count++;
 	}
 
 	return (int) $count;
@@ -868,21 +793,21 @@ function pete_psc_count_site_root_files( $site_root, $exclude_plugin_dir_real = 
 /**
  * Add site files directly into an open ZipArchive under a given prefix (no staging copy on disk).
  *
- * UPDATED: adds throttled progress callback support.
+ * Progress reporting:
+ * If $progress_cb is provided, it will be called periodically with:
+ *   ($added_files, $total_files)
  *
- * @param ZipArchive    $zip
- * @param string        $site_root
- * @param string        $zip_prefix
- * @param string        $exclude_plugin_dir_real
- * @param string        $exclude_export_dir_real
- * @param callable|null $progress_cb function(int $pct, string $msg): void
- * @param int           $total_files Total eligible files (from pete_psc_count_site_root_files)
- * @param int           $pct_start   Progress start percentage (inclusive)
- * @param int           $pct_end     Progress end percentage (inclusive)
+ * @param ZipArchive   $zip
+ * @param string       $site_root
+ * @param string       $zip_prefix
+ * @param string       $exclude_plugin_dir_real
+ * @param string       $exclude_export_dir_real
+ * @param callable|null $progress_cb function(int $added, int $total): void
+ * @param int          $total_files Total file count for progress calculations (0 allowed).
  * @return int
  * @throws Exception
  */
-function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '', $progress_cb = null, $total_files = 0, $pct_start = 45, $pct_end = 88 ) {
+function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '', $progress_cb = null, $total_files = 0 ) {
 	$site_root      = trailingslashit( (string) $site_root );
 	$site_root_real = pete_psc_realpath( $site_root, 'zip_site_root' );
 	if ( ! $site_root_real ) {
@@ -896,62 +821,15 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 	$excludes = pete_psc_get_default_export_excludes();
 	$added    = 0;
 
-	$total_files = absint( $total_files );
-	$pct_start   = max( 0, min( 100, absint( $pct_start ) ) );
-	$pct_end     = max( 0, min( 100, absint( $pct_end ) ) );
-
-	if ( $pct_end < $pct_start ) {
-		$tmp       = $pct_start;
-		$pct_start = $pct_end;
-		$pct_end   = $tmp;
-	}
-
-	// Throttle progress writes: update at most every ~1s or every N files.
-	$last_progress_at = 0;
-	$progress_every_n = 50;
-
-	$do_progress = function ( $done_files ) use ( $progress_cb, $total_files, $pct_start, $pct_end, &$last_progress_at ) {
-		if ( ! is_callable( $progress_cb ) ) {
-			return;
-		}
-
-		$now = time();
-		// Hard throttle: at most once per second.
-		if ( $last_progress_at === $now ) {
-			return;
-		}
-		$last_progress_at = $now;
-
-		if ( $total_files <= 0 ) {
-			call_user_func(
-				$progress_cb,
-				$pct_start,
-				__( 'Adding files to archive…', 'pete-panel-site-converter' )
-			);
-			return;
-		}
-
-		$ratio = max( 0, min( 1, (float) $done_files / (float) $total_files ) );
-		$pct   = (int) round( $pct_start + ( ( $pct_end - $pct_start ) * $ratio ) );
-
-		call_user_func(
-			$progress_cb,
-			$pct,
-			sprintf(
-				/* translators: 1: files processed, 2: total files */
-				__( 'Adding files… %1$d/%2$d', 'pete-panel-site-converter' ),
-				(int) $done_files,
-				(int) $total_files
-			)
-		);
-	};
+	// Throttle progress callbacks to avoid excessive transient writes.
+	$last_cb_time = microtime( true );
+	$cb_min_sec   = 0.5; // at most ~2 updates/sec.
+	$cb_every_n   = 50;  // and/or every 50 files, whichever comes first.
 
 	$it = new RecursiveIteratorIterator(
 		new RecursiveDirectoryIterator( $site_root_real, FilesystemIterator::SKIP_DOTS ),
 		RecursiveIteratorIterator::SELF_FIRST
 	);
-
-	$done_files = 0;
 
 	foreach ( $it as $info ) {
 		/** @var SplFileInfo $info */
@@ -968,24 +846,8 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 		}
 		$full_real = wp_normalize_path( $full_real );
 
-		// Must stay within site root.
-		$full_norm = trailingslashit( $full_real );
-		if ( strpos( $full_norm, $site_root_real ) !== 0 ) {
-			continue;
-		}
-
-		// Exclude plugin dir and export dir.
-		if ( $plugin_norm && strpos( $full_norm, $plugin_norm ) === 0 ) {
-			continue;
-		}
-		if ( $export_norm && strpos( $full_norm, $export_norm ) === 0 ) {
-			continue;
-		}
-
-		$rel = ltrim( substr( $full_real, strlen( $site_root_real ) ), '/' );
-		$rel = ltrim( str_replace( '\\', '/', $rel ), '/' );
-
-		if ( pete_psc_is_excluded_relpath( $rel, $excludes ) ) {
+		$rel = pete_psc_export_relpath_if_included( $full_real, $site_root_real, $plugin_norm, $export_norm, $excludes );
+		if ( $rel === false ) {
 			continue;
 		}
 
@@ -1002,16 +864,20 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 		}
 
 		$added++;
-		$done_files++;
 
-		// Throttle by number of files too (avoids too many transient updates on huge sites).
-		if ( $done_files % $progress_every_n === 0 ) {
-			$do_progress( $done_files );
+		if ( is_callable( $progress_cb ) ) {
+			$now = microtime( true );
+			if ( ( $added % $cb_every_n ) === 0 || ( $now - $last_cb_time ) >= $cb_min_sec || ( $total_files > 0 && $added >= $total_files ) ) {
+				$last_cb_time = $now;
+				call_user_func( $progress_cb, (int) $added, (int) $total_files );
+			}
 		}
 	}
 
-	// Final progress update for this phase.
-	$do_progress( $done_files );
+	// Final callback to ensure UI reaches the end of the range.
+	if ( is_callable( $progress_cb ) ) {
+		call_user_func( $progress_cb, (int) $added, (int) $total_files );
+	}
 
 	return (int) $added;
 }
@@ -1521,12 +1387,12 @@ function pete_run_export_core( array $job ) {
 		throw new Exception( esc_html__( 'Failed to add query.sql to archive.', 'pete-panel-site-converter' ) );
 	}
 
-	// NEW: count files first so the progress bar can reflect real zip progress.
-	$save_progress( 43, __( 'Scanning files…', 'pete-panel-site-converter' ) );
+	// -----------------------------------------------------------------
+	// Real ZIP progress: count files, then update progress during add loop
+	// -----------------------------------------------------------------
 
 	$exclude_plugin_dir_real = pete_psc_realpath( plugin_dir_path( __FILE__ ), 'plugin_dir' );
-
-	$total_files = pete_psc_count_site_root_files(
+	$total_files             = pete_psc_count_site_files_for_zip(
 		get_home_path(),
 		$exclude_plugin_dir_real ? $exclude_plugin_dir_real : '',
 		$baseDirReal ? $baseDirReal : ''
@@ -1534,14 +1400,49 @@ function pete_run_export_core( array $job ) {
 
 	$save_progress(
 		45,
-		( $total_files > 0 )
-			? sprintf(
-				/* translators: %d: number of files to add to ZIP */
-				__( 'Adding files to archive… (%d files)', 'pete-panel-site-converter' ),
-				(int) $total_files
-			)
-			: __( 'Adding files to archive…', 'pete-panel-site-converter' )
+		sprintf(
+			/* translators: %d: total files to add */
+			__( 'Adding files to archive… (%d files)', 'pete-panel-site-converter' ),
+			(int) $total_files
+		)
 	);
+
+	$progress_start = 45;
+	$progress_end   = 90;
+	$progress_range = max( 1, (int) ( $progress_end - $progress_start ) );
+	$last_pct_sent  = -1;
+
+	$progress_cb = function ( $added, $total ) use ( $save_progress, $progress_start, $progress_range, &$last_pct_sent ) {
+		$added = (int) $added;
+		$total = (int) $total;
+
+		$den = max( 1, $total );
+		$ratio = $added / $den;
+		if ( $ratio < 0 ) {
+			$ratio = 0;
+		}
+		if ( $ratio > 1 ) {
+			$ratio = 1;
+		}
+
+		$pct = $progress_start + (int) floor( $ratio * $progress_range );
+
+		// Only write if the displayed percent changes (reduces transient churn).
+		if ( $pct === $last_pct_sent ) {
+			return;
+		}
+		$last_pct_sent = $pct;
+
+		$save_progress(
+			$pct,
+			sprintf(
+				/* translators: 1: added files, 2: total files */
+				__( 'Adding files to archive… (%1$d/%2$d)', 'pete-panel-site-converter' ),
+				$added,
+				$den
+			)
+		);
+	};
 
 	$added_files = pete_psc_zip_site_root(
 		$zip,
@@ -1549,10 +1450,8 @@ function pete_run_export_core( array $job ) {
 		'filem/',
 		$exclude_plugin_dir_real ? $exclude_plugin_dir_real : '',
 		$baseDirReal ? $baseDirReal : '',
-		$save_progress,  // progress callback
-		$total_files,    // total eligible files
-		45,
-		88
+		$progress_cb,
+		(int) $total_files
 	);
 
 	$save_progress(
