@@ -789,17 +789,100 @@ function pete_psc_rrmdir( $dir ) {
 }
 
 /**
+ * NEW: Count how many eligible files will be added from site root.
+ *
+ * This enables a real progress bar while building the ZIP.
+ * We count only files (not directories) because ZipArchive::addFile()
+ * is what takes time and what users care about.
+ *
+ * @param string $site_root
+ * @param string $exclude_plugin_dir_real
+ * @param string $exclude_export_dir_real
+ * @return int
+ */
+function pete_psc_count_site_root_files( $site_root, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '' ) {
+	$site_root      = trailingslashit( (string) $site_root );
+	$site_root_real = pete_psc_realpath( $site_root, 'count_site_root' );
+	if ( ! $site_root_real ) {
+		return 0;
+	}
+	$site_root_real = trailingslashit( wp_normalize_path( $site_root_real ) );
+
+	$plugin_norm = $exclude_plugin_dir_real ? trailingslashit( wp_normalize_path( (string) $exclude_plugin_dir_real ) ) : '';
+	$export_norm = $exclude_export_dir_real ? trailingslashit( wp_normalize_path( (string) $exclude_export_dir_real ) ) : '';
+
+	$excludes = pete_psc_get_default_export_excludes();
+	$count    = 0;
+
+	try {
+		$it = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $site_root_real, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::SELF_FIRST
+		);
+
+		foreach ( $it as $info ) {
+			/** @var SplFileInfo $info */
+			$full = $info->getPathname();
+
+			if ( is_link( $full ) ) {
+				continue;
+			}
+
+			$full_real = pete_psc_realpath( $full, 'count_item' );
+			if ( ! $full_real ) {
+				continue;
+			}
+			$full_real = wp_normalize_path( $full_real );
+
+			$full_norm = trailingslashit( $full_real );
+			if ( strpos( $full_norm, $site_root_real ) !== 0 ) {
+				continue;
+			}
+
+			if ( $plugin_norm && strpos( $full_norm, $plugin_norm ) === 0 ) {
+				continue;
+			}
+			if ( $export_norm && strpos( $full_norm, $export_norm ) === 0 ) {
+				continue;
+			}
+
+			$rel = ltrim( substr( $full_real, strlen( $site_root_real ) ), '/' );
+			$rel = ltrim( str_replace( '\\', '/', $rel ), '/' );
+
+			if ( pete_psc_is_excluded_relpath( $rel, $excludes ) ) {
+				continue;
+			}
+
+			if ( $info->isFile() ) {
+				$count++;
+			}
+		}
+	} catch ( Throwable $e ) {
+		pete_psc_log( 'Counting files failed', array( 'err' => $e->getMessage() ) );
+		return 0;
+	}
+
+	return (int) $count;
+}
+
+/**
  * Add site files directly into an open ZipArchive under a given prefix (no staging copy on disk).
  *
- * @param ZipArchive $zip
- * @param string     $site_root
- * @param string     $zip_prefix
- * @param string     $exclude_plugin_dir_real
- * @param string     $exclude_export_dir_real
+ * UPDATED: adds throttled progress callback support.
+ *
+ * @param ZipArchive    $zip
+ * @param string        $site_root
+ * @param string        $zip_prefix
+ * @param string        $exclude_plugin_dir_real
+ * @param string        $exclude_export_dir_real
+ * @param callable|null $progress_cb function(int $pct, string $msg): void
+ * @param int           $total_files Total eligible files (from pete_psc_count_site_root_files)
+ * @param int           $pct_start   Progress start percentage (inclusive)
+ * @param int           $pct_end     Progress end percentage (inclusive)
  * @return int
  * @throws Exception
  */
-function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '' ) {
+function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_dir_real = '', $exclude_export_dir_real = '', $progress_cb = null, $total_files = 0, $pct_start = 45, $pct_end = 88 ) {
 	$site_root      = trailingslashit( (string) $site_root );
 	$site_root_real = pete_psc_realpath( $site_root, 'zip_site_root' );
 	if ( ! $site_root_real ) {
@@ -813,10 +896,62 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 	$excludes = pete_psc_get_default_export_excludes();
 	$added    = 0;
 
+	$total_files = absint( $total_files );
+	$pct_start   = max( 0, min( 100, absint( $pct_start ) ) );
+	$pct_end     = max( 0, min( 100, absint( $pct_end ) ) );
+
+	if ( $pct_end < $pct_start ) {
+		$tmp       = $pct_start;
+		$pct_start = $pct_end;
+		$pct_end   = $tmp;
+	}
+
+	// Throttle progress writes: update at most every ~1s or every N files.
+	$last_progress_at = 0;
+	$progress_every_n = 50;
+
+	$do_progress = function ( $done_files ) use ( $progress_cb, $total_files, $pct_start, $pct_end, &$last_progress_at ) {
+		if ( ! is_callable( $progress_cb ) ) {
+			return;
+		}
+
+		$now = time();
+		// Hard throttle: at most once per second.
+		if ( $last_progress_at === $now ) {
+			return;
+		}
+		$last_progress_at = $now;
+
+		if ( $total_files <= 0 ) {
+			call_user_func(
+				$progress_cb,
+				$pct_start,
+				__( 'Adding files to archive…', 'pete-panel-site-converter' )
+			);
+			return;
+		}
+
+		$ratio = max( 0, min( 1, (float) $done_files / (float) $total_files ) );
+		$pct   = (int) round( $pct_start + ( ( $pct_end - $pct_start ) * $ratio ) );
+
+		call_user_func(
+			$progress_cb,
+			$pct,
+			sprintf(
+				/* translators: 1: files processed, 2: total files */
+				__( 'Adding files… %1$d/%2$d', 'pete-panel-site-converter' ),
+				(int) $done_files,
+				(int) $total_files
+			)
+		);
+	};
+
 	$it = new RecursiveIteratorIterator(
 		new RecursiveDirectoryIterator( $site_root_real, FilesystemIterator::SKIP_DOTS ),
 		RecursiveIteratorIterator::SELF_FIRST
 	);
+
+	$done_files = 0;
 
 	foreach ( $it as $info ) {
 		/** @var SplFileInfo $info */
@@ -867,7 +1002,16 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 		}
 
 		$added++;
+		$done_files++;
+
+		// Throttle by number of files too (avoids too many transient updates on huge sites).
+		if ( $done_files % $progress_every_n === 0 ) {
+			$do_progress( $done_files );
+		}
 	}
+
+	// Final progress update for this phase.
+	$do_progress( $done_files );
 
 	return (int) $added;
 }
@@ -1377,16 +1521,38 @@ function pete_run_export_core( array $job ) {
 		throw new Exception( esc_html__( 'Failed to add query.sql to archive.', 'pete-panel-site-converter' ) );
 	}
 
-	$save_progress( 45, __( 'Adding files to archive…', 'pete-panel-site-converter' ) );
+	// NEW: count files first so the progress bar can reflect real zip progress.
+	$save_progress( 43, __( 'Scanning files…', 'pete-panel-site-converter' ) );
 
 	$exclude_plugin_dir_real = pete_psc_realpath( plugin_dir_path( __FILE__ ), 'plugin_dir' );
+
+	$total_files = pete_psc_count_site_root_files(
+		get_home_path(),
+		$exclude_plugin_dir_real ? $exclude_plugin_dir_real : '',
+		$baseDirReal ? $baseDirReal : ''
+	);
+
+	$save_progress(
+		45,
+		( $total_files > 0 )
+			? sprintf(
+				/* translators: %d: number of files to add to ZIP */
+				__( 'Adding files to archive… (%d files)', 'pete-panel-site-converter' ),
+				(int) $total_files
+			)
+			: __( 'Adding files to archive…', 'pete-panel-site-converter' )
+	);
 
 	$added_files = pete_psc_zip_site_root(
 		$zip,
 		get_home_path(),
 		'filem/',
 		$exclude_plugin_dir_real ? $exclude_plugin_dir_real : '',
-		$baseDirReal ? $baseDirReal : ''
+		$baseDirReal ? $baseDirReal : '',
+		$save_progress,  // progress callback
+		$total_files,    // total eligible files
+		45,
+		88
 	);
 
 	$save_progress(

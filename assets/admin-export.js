@@ -30,7 +30,11 @@
     const safe = Math.max(0, Math.min(100, parseInt(pct || 0, 10)));
     barFill.style.width = safe + "%";
     progressText.textContent = msg || "";
-    if (progressWrap.style.display === "none") {
+
+    // IMPORTANT: .pete-psc-progress is hidden via CSS (display:none).
+    // progressWrap.style.display checks inline style only (usually empty),
+    // so we must check computed style to reliably show the progress UI.
+    if (window.getComputedStyle(progressWrap).display === "none") {
       progressWrap.style.display = "block";
     }
   }
@@ -136,7 +140,10 @@
     }
 
     try {
-      setProgress(Math.max(parseInt(barFill.style.width, 10) || 3, 3), t("cron_blocked", "Cron seems blocked. Running export directly…"));
+      setProgress(
+        Math.max(parseInt(barFill.style.width, 10) || 3, 3),
+        t("cron_blocked", "Cron seems blocked. Running export directly…")
+      );
       await restJson(makeRunUrl(jobId), { method: "POST" });
       return now;
     } catch (e) {
