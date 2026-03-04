@@ -48,8 +48,6 @@ function pete_psc_required_distribution_items() {
 	return array(
 		'petefaceicon.png'     => 'petefaceicon.png (admin menu icon)',
 		'licenses/GPL-3.0.txt' => 'licenses/GPL-3.0.txt (license file referenced in readme)',
-		// languages is a directory; we can create it automatically, but still verify.
-		'languages'            => 'languages/ (translations directory)',
 	);
 }
 
@@ -70,9 +68,10 @@ function pete_psc_validate_distribution_files() {
 	// Ensure languages dir exists (can be auto-created).
 	$lang_dir = $plugin_root . 'languages';
 	if ( ! is_dir( $lang_dir ) ) {
-		if ( function_exists( 'wp_mkdir_p' ) && wp_mkdir_p( $lang_dir ) ) {
-			$created[] = 'languages/';
+		if ( function_exists( 'wp_mkdir_p' ) ) {
+			wp_mkdir_p( $lang_dir );
 		}
+		// Do not report languages/ as "created" — it's optional and often absent in ZIPs.
 	}
 
 	foreach ( $req as $rel => $label ) {

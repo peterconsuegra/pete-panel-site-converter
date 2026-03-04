@@ -71,20 +71,11 @@ After a successful download, the ZIP file is automatically deleted to reduce lef
 
 == Export Storage Location ==
 
-The plugin attempts to write WordPress backup exports to:
+Export archives are temporarily stored in:
 
-1) Preferred location (outside uploads):
-`wp-content/pete-panel-site-converter-exports/`
+wp-content/uploads/pete-panel-site-converter/
 
-If not writable, it falls back to:
-
-2) Uploads directory:
-`wp-content/uploads/pete-panel-site-converter/`
-
-In both cases the plugin creates:
-
-- `.htaccess` (deny access for Apache environments)
-- `index.html`
+The directory is protected with .htaccess and index.html, and downloads are only available to administrators via a nonce-protected link. Archives are automatically deleted after successful download.
 
 Note: On Nginx servers, `.htaccess` rules may not apply. Regardless, downloads remain protected by WordPress permissions, nonces, and strict path checks.
 
