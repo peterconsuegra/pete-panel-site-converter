@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name:       Site Migration & Backup Export (Pete Panel)
-Plugin URI:        https://wordpress.org/plugins/pete-panel-site-converter/
-Description:       Export a Site site into a Pete Panel-compatible archive (files + database dump) for migration or cloning.
+Plugin URI:        https://wordpress.org/plugins/site-migration-backup-export-pete-panel/
+Description:       Export a WordPress site into a Pete Panel-compatible archive (files + database dump) for migration or cloning.
 Version:           1.0.0
 Requires at least: 5.8
 Requires PHP:      7.4
@@ -10,7 +10,7 @@ Author:            Pedro Consuegra
 Author URI:        https://deploypete.com
 License:           GPLv3 or later
 License URI:       https://www.gnu.org/licenses/gpl-3.0.html
-Text Domain:       pete-panel-site-converter
+Text Domain:       site-migration-backup-export-pete-panel
 Domain Path:       /languages
 */
 
@@ -22,10 +22,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Constants
 // ---------------------------------------------------------------------
 
-define( 'PETE_PSC_TEXT_DOMAIN', 'pete-panel-site-converter' );
-define( 'PETE_PSC_SLUG', 'pete-panel-site-converter' );
+define( 'PETE_PSC_TEXT_DOMAIN', 'site-migration-backup-export-pete-panel' );
+define( 'PETE_PSC_SLUG', 'site-migration-backup-export-pete-panel' );
 define( 'PETE_PSC_VERSION', '1.0.0' ); // Used for enqueued asset versions.
-define( 'PETE_PSC_UPLOAD_SUBDIR', 'pete-panel-site-converter' ); // uploads/{this}/
+define( 'PETE_PSC_UPLOAD_SUBDIR', 'pete-panel-site-converter' ); // uploads/{this}/ (kept for backwards compatibility)
 define( 'PETE_PSC_ADMIN_JS_HANDLE', 'pete-psc-admin' );
 define( 'PETE_PSC_ADMIN_CSS_HANDLE', 'pete-psc-admin-css' );
 
@@ -143,15 +143,15 @@ function pete_psc_admin_notice_distribution_missing() {
 	$class    = $is_error ? 'notice notice-error' : 'notice notice-warning';
 
 	echo '<div class="' . esc_attr( $class ) . '"><p>';
-	echo '<strong>' . esc_html__( 'Pete Panel Site Converter:', 'pete-panel-site-converter' ) . '</strong> ';
+	echo '<strong>' . esc_html__( 'Pete Panel Site Converter:', PETE_PSC_TEXT_DOMAIN ) . '</strong> ';
 
 	if ( ! empty( $created ) ) {
-		echo esc_html__( 'Created missing directories:', 'pete-panel-site-converter' ) . ' ';
+		echo esc_html__( 'Created missing directories:', PETE_PSC_TEXT_DOMAIN ) . ' ';
 		echo '<code>' . esc_html( implode( ', ', $created ) ) . '</code>. ';
 	}
 
 	if ( ! empty( $missing ) ) {
-		echo esc_html__( 'Some required plugin files are missing from this installation (likely not included in the plugin ZIP). Please re-upload/reinstall the plugin including:', 'pete-panel-site-converter' );
+		echo esc_html__( 'Some required plugin files are missing from this installation (likely not included in the plugin ZIP). Please re-upload/reinstall the plugin including:', PETE_PSC_TEXT_DOMAIN );
 		echo '</p><ul style="margin-left: 1.2em; list-style: disc;">';
 		foreach ( $missing as $m ) {
 			echo '<li><code>' . esc_html( $m ) . '</code></li>';
@@ -159,7 +159,7 @@ function pete_psc_admin_notice_distribution_missing() {
 		echo '</ul><p>';
 	}
 
-	echo esc_html__( 'This does not stop exports, but it indicates an incomplete plugin package.', 'pete-panel-site-converter' );
+	echo esc_html__( 'This does not stop exports, but it indicates an incomplete plugin package.', PETE_PSC_TEXT_DOMAIN );
 	echo '</p></div>';
 }
 
@@ -267,7 +267,7 @@ if ( ! function_exists( 'pete_psc_die' ) ) {
 		$title = (string) $title;
 
 		if ( $title === '' ) {
-			$title = ( $code >= 400 ) ? __( 'Error', 'pete-panel-site-converter' ) : __( 'Notice', 'pete-panel-site-converter' );
+			$title = ( $code >= 400 ) ? __( 'Error', PETE_PSC_TEXT_DOMAIN ) : __( 'Notice', PETE_PSC_TEXT_DOMAIN );
 		}
 
 		wp_die(
@@ -744,7 +744,7 @@ function pete_psc_zip_site_root( $zip, $site_root, $zip_prefix, $exclude_plugin_
 	$site_root      = trailingslashit( (string) $site_root );
 	$site_root_real = pete_psc_realpath( $site_root, 'zip_site_root' );
 	if ( ! $site_root_real ) {
-		throw new Exception( esc_html__( 'Could not resolve site root realpath.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Could not resolve site root realpath.', PETE_PSC_TEXT_DOMAIN ) );
 	}
 	$site_root_real = trailingslashit( wp_normalize_path( $site_root_real ) );
 
@@ -823,8 +823,8 @@ add_action(
 		$icon     = file_exists( $icon_abs ) ? plugins_url( 'petefaceicon.png', __FILE__ ) : 'dashicons-migrate';
 
 		add_menu_page(
-			__( 'Pete Panel Site Converter', 'pete-panel-site-converter' ),
-			__( 'Pete Converter', 'pete-panel-site-converter' ),
+			__( 'Pete Panel Site Converter', PETE_PSC_TEXT_DOMAIN ),
+			__( 'Pete Converter', PETE_PSC_TEXT_DOMAIN ),
 			'manage_options',
 			'pete-export-options',
 			'pete_psc_export_view',
@@ -860,18 +860,18 @@ add_action(
 		$start_url  = esc_url_raw( rest_url( 'pete/v1/export' ) );
 
 		$i18n = array(
-			'starting'          => __( 'Starting…', 'pete-panel-site-converter' ),
-			'queued'            => __( 'Queued…', 'pete-panel-site-converter' ),
-			'working'           => __( 'Working…', 'pete-panel-site-converter' ),
-			'running'           => __( 'Running…', 'pete-panel-site-converter' ),
-			'ready'             => __( 'Export ready.', 'pete-panel-site-converter' ),
-			'failed_start'      => __( 'Failed to start:', 'pete-panel-site-converter' ),
-			'export_failed'     => __( 'Export failed:', 'pete-panel-site-converter' ),
-			'error_prefix'      => __( 'Error:', 'pete-panel-site-converter' ),
-			'cron_blocked'      => __( 'Cron seems blocked. Running export directly…', 'pete-panel-site-converter' ),
-			'download_fallback' => __( 'Export finished, but download link is missing. Please refresh this page.', 'pete-panel-site-converter' ),
-			'download_default'  => __( 'Download export', 'pete-panel-site-converter' ),
-			'start'             => __( 'Start export', 'pete-panel-site-converter' ),
+			'starting'          => __( 'Starting…', PETE_PSC_TEXT_DOMAIN ),
+			'queued'            => __( 'Queued…', PETE_PSC_TEXT_DOMAIN ),
+			'working'           => __( 'Working…', PETE_PSC_TEXT_DOMAIN ),
+			'running'           => __( 'Running…', PETE_PSC_TEXT_DOMAIN ),
+			'ready'             => __( 'Export ready.', PETE_PSC_TEXT_DOMAIN ),
+			'failed_start'      => __( 'Failed to start:', PETE_PSC_TEXT_DOMAIN ),
+			'export_failed'     => __( 'Export failed:', PETE_PSC_TEXT_DOMAIN ),
+			'error_prefix'      => __( 'Error:', PETE_PSC_TEXT_DOMAIN ),
+			'cron_blocked'      => __( 'Cron seems blocked. Running export directly…', PETE_PSC_TEXT_DOMAIN ),
+			'download_fallback' => __( 'Export finished, but download link is missing. Please refresh this page.', PETE_PSC_TEXT_DOMAIN ),
+			'download_default'  => __( 'Download export', PETE_PSC_TEXT_DOMAIN ),
+			'start'             => __( 'Start export', PETE_PSC_TEXT_DOMAIN ),
 		);
 
 		wp_localize_script(
@@ -901,56 +901,56 @@ add_action(
 
 function pete_psc_export_view() {
 	if ( ! current_user_can( 'manage_options' ) ) {
-		pete_psc_die( __( 'You do not have sufficient permissions to access this page.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'You do not have sufficient permissions to access this page.', PETE_PSC_TEXT_DOMAIN ), 403, __( 'Forbidden', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$dist    = get_transient( 'pete_psc_dist_missing' );
 	$missing = ( is_array( $dist ) && ! empty( $dist['missing'] ) && is_array( $dist['missing'] ) ) ? $dist['missing'] : array();
 	?>
 	<div class="wrap pete-psc-wrap">
-		<h1><?php echo esc_html__( 'Export site to Pete Panel format', 'pete-panel-site-converter' ); ?></h1>
+		<h1><?php echo esc_html__( 'Export site to Pete Panel format', PETE_PSC_TEXT_DOMAIN ); ?></h1>
 
 		<?php if ( ! empty( $missing ) ) : ?>
 			<div class="notice notice-error">
 				<p>
-					<strong><?php echo esc_html__( 'Plugin package appears incomplete:', 'pete-panel-site-converter' ); ?></strong>
-					<?php echo esc_html__( 'Some required files are missing from this installation:', 'pete-panel-site-converter' ); ?>
+					<strong><?php echo esc_html__( 'Plugin package appears incomplete:', PETE_PSC_TEXT_DOMAIN ); ?></strong>
+					<?php echo esc_html__( 'Some required files are missing from this installation:', PETE_PSC_TEXT_DOMAIN ); ?>
 				</p>
 				<ul style="margin-left:1.2em;list-style:disc;">
 					<?php foreach ( $missing as $m ) : ?>
 						<li><code><?php echo esc_html( $m ); ?></code></li>
 					<?php endforeach; ?>
 				</ul>
-				<p><?php echo esc_html__( 'Reinstall the plugin from a ZIP that includes these items.', 'pete-panel-site-converter' ); ?></p>
+				<p><?php echo esc_html__( 'Reinstall the plugin from a ZIP that includes these items.', PETE_PSC_TEXT_DOMAIN ); ?></p>
 			</div>
 		<?php endif; ?>
 
-		<p class="pete-psc-intro"><?php echo esc_html__( 'Click “Start export”. The job runs in the background - feel free to keep working.', 'pete-panel-site-converter' ); ?></p>
+		<p class="pete-psc-intro"><?php echo esc_html__( 'Click “Start export”. The job runs in the background - feel free to keep working.', PETE_PSC_TEXT_DOMAIN ); ?></p>
 
 		<details class="pete-psc-tip">
 			<summary>
-				<strong><?php echo esc_html__( 'Tip:', 'pete-panel-site-converter' ); ?></strong>
-				<?php echo esc_html__( 'If you ever hit time limits on some hosts', 'pete-panel-site-converter' ); ?>
+				<strong><?php echo esc_html__( 'Tip:', PETE_PSC_TEXT_DOMAIN ); ?></strong>
+				<?php echo esc_html__( 'If you ever hit time limits on some hosts', PETE_PSC_TEXT_DOMAIN ); ?>
 			</summary>
 			<ol>
-				<li><?php echo wp_kses_post( __( 'In <code>wp-config.php</code>: <code>set_time_limit(300);</code>', 'pete-panel-site-converter' ) ); ?></li>
-				<li><?php echo wp_kses_post( __( 'In <code>php.ini</code>: <code>max_execution_time = 300</code>', 'pete-panel-site-converter' ) ); ?></li>
-				<li><?php echo wp_kses_post( __( 'In <code>.htaccess</code>: <code>php_value max_execution_time 300</code>', 'pete-panel-site-converter' ) ); ?></li>
+				<li><?php echo wp_kses_post( __( 'In <code>wp-config.php</code>: <code>set_time_limit(300);</code>', PETE_PSC_TEXT_DOMAIN ) ); ?></li>
+				<li><?php echo wp_kses_post( __( 'In <code>php.ini</code>: <code>max_execution_time = 300</code>', PETE_PSC_TEXT_DOMAIN ) ); ?></li>
+				<li><?php echo wp_kses_post( __( 'In <code>.htaccess</code>: <code>php_value max_execution_time 300</code>', PETE_PSC_TEXT_DOMAIN ) ); ?></li>
 			</ol>
 		</details>
 
 		<p class="pete-psc-security">
-			<strong><?php echo esc_html__( 'Security note:', 'pete-panel-site-converter' ); ?></strong>
-			<?php echo esc_html__( 'Exports may include sensitive files if present in your site root. By default, this plugin excludes common secrets (like wp-config.php and .env) and common backup/cache folders. Review your archive contents before sharing it.', 'pete-panel-site-converter' ); ?>
+			<strong><?php echo esc_html__( 'Security note:', PETE_PSC_TEXT_DOMAIN ); ?></strong>
+			<?php echo esc_html__( 'Exports may include sensitive files if present in your site root. By default, this plugin excludes common secrets (like wp-config.php and .env) and common backup/cache folders. Review your archive contents before sharing it.', PETE_PSC_TEXT_DOMAIN ); ?>
 		</p>
 
-		<button id="pete-start-export" class="button button-primary"><?php echo esc_html__( 'Start export', 'pete-panel-site-converter' ); ?></button>
+		<button id="pete-start-export" class="button button-primary"><?php echo esc_html__( 'Start export', PETE_PSC_TEXT_DOMAIN ); ?></button>
 
 		<div id="pete-progress" class="pete-psc-progress">
 			<div id="pete-progress-bar" class="pete-psc-progress-bar">
 				<span id="pete-progress-fill" class="pete-psc-progress-fill"></span>
 			</div>
-			<p id="pete-progress-text" class="pete-psc-progress-text"><?php echo esc_html__( 'Queued…', 'pete-panel-site-converter' ); ?></p>
+			<p id="pete-progress-text" class="pete-psc-progress-text"><?php echo esc_html__( 'Queued…', PETE_PSC_TEXT_DOMAIN ); ?></p>
 		</div>
 
 		<div id="pete-download" class="pete-psc-download"></div>
@@ -967,31 +967,31 @@ add_action( 'admin_post_pete_download_export', 'pete_psc_handle_secure_download'
 add_action(
 	'admin_post_nopriv_pete_download_export',
 	function () {
-		pete_psc_die( __( 'You must be logged in as an administrator to download this export.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'You must be logged in as an administrator to download this export.', PETE_PSC_TEXT_DOMAIN ), 403, __( 'Forbidden', PETE_PSC_TEXT_DOMAIN ) );
 	}
 );
 
 function pete_psc_handle_secure_download() {
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
-		pete_psc_die( __( 'You must be an administrator to download this export.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'You must be an administrator to download this export.', PETE_PSC_TEXT_DOMAIN ), 403, __( 'Forbidden', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$q_raw = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
 	$q     = preg_replace( '/[^A-Za-z0-9]/', '', $q_raw );
 	if ( empty( $q ) ) {
-		pete_psc_die( __( 'Invalid download request (missing id).', 'pete-panel-site-converter' ), 400, __( 'Bad Request', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'Invalid download request (missing id).', PETE_PSC_TEXT_DOMAIN ), 400, __( 'Bad Request', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$transient_key = 'pete_export_id_' . $q;
 	$payload       = get_transient( $transient_key );
 	if ( ! $payload || ! is_array( $payload ) ) {
-		pete_psc_die( __( 'This download link has expired or is invalid. Please run a new export.', 'pete-panel-site-converter' ), 410, __( 'Gone', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'This download link has expired or is invalid. Please run a new export.', PETE_PSC_TEXT_DOMAIN ), 410, __( 'Gone', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$owner_id = isset( $payload['user'] ) ? (int) $payload['user'] : 0;
 	if ( $owner_id <= 0 ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'Invalid link (no owner bound). Please run a new export.', 'pete-panel-site-converter' ), 400, __( 'Bad Request', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'Invalid link (no owner bound). Please run a new export.', PETE_PSC_TEXT_DOMAIN ), 400, __( 'Bad Request', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$provided   = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
@@ -1006,13 +1006,13 @@ function pete_psc_handle_secure_download() {
 				'nonce' => substr( (string) $provided, 0, 10 ),
 			)
 		);
-		pete_psc_die( __( 'Invalid or expired download link. Please click the “Download” button again from the export page.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'Invalid or expired download link. Please click the “Download” button again from the export page.', PETE_PSC_TEXT_DOMAIN ), 403, __( 'Forbidden', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$current_id = get_current_user_id();
 	if ( $current_id !== $owner_id ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'Access denied. Please log in as the user who created the export and retry.', 'pete-panel-site-converter' ), 403, __( 'Forbidden', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'Access denied. Please log in as the user who created the export and retry.', PETE_PSC_TEXT_DOMAIN ), 403, __( 'Forbidden', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$path          = isset( $payload['path'] ) ? (string) $payload['path'] : '';
@@ -1021,7 +1021,7 @@ function pete_psc_handle_secure_download() {
 
 	if ( $path === '' ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'File not found.', 'pete-panel-site-converter' ), 404, __( 'Not Found', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'File not found.', PETE_PSC_TEXT_DOMAIN ), 404, __( 'Not Found', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$base_dir_raw = isset( $payload['base_dir'] ) ? (string) $payload['base_dir'] : '';
@@ -1035,17 +1035,17 @@ function pete_psc_handle_secure_download() {
 
 	if ( ! $real || ! $base_dir_slash || strpos( $real, $base_dir_slash ) !== 0 ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'File not found or access denied.', 'pete-panel-site-converter' ), 404, __( 'Not Found', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'File not found or access denied.', PETE_PSC_TEXT_DOMAIN ), 404, __( 'Not Found', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	if ( strtolower( pathinfo( $real, PATHINFO_EXTENSION ) ) !== 'zip' ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'File not found or access denied.', 'pete-panel-site-converter' ), 404, __( 'Not Found', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'File not found or access denied.', PETE_PSC_TEXT_DOMAIN ), 404, __( 'Not Found', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	if ( ! file_exists( $real ) || ! is_readable( $real ) ) {
 		delete_transient( $transient_key );
-		pete_psc_die( __( 'File not found or not readable.', 'pete-panel-site-converter' ), 404, __( 'Not Found', 'pete-panel-site-converter' ) );
+		pete_psc_die( __( 'File not found or not readable.', PETE_PSC_TEXT_DOMAIN ), 404, __( 'Not Found', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$size = pete_psc_filesize( $real, 'download' );
@@ -1106,7 +1106,7 @@ function pete_psc_rest_permission_check( WP_REST_Request $request ) {
 	if ( ! is_user_logged_in() ) {
 		return new WP_Error(
 			'pete_psc_rest_not_logged_in',
-			__( 'Authentication required.', 'pete-panel-site-converter' ),
+			__( 'Authentication required.', PETE_PSC_TEXT_DOMAIN ),
 			array( 'status' => 401 )
 		);
 	}
@@ -1114,7 +1114,7 @@ function pete_psc_rest_permission_check( WP_REST_Request $request ) {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return new WP_Error(
 			'pete_psc_rest_forbidden',
-			__( 'Forbidden.', 'pete-panel-site-converter' ),
+			__( 'Forbidden.', PETE_PSC_TEXT_DOMAIN ),
 			array( 'status' => 403 )
 		);
 	}
@@ -1127,7 +1127,7 @@ function pete_psc_rest_permission_check( WP_REST_Request $request ) {
 	if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
 		return new WP_Error(
 			'pete_psc_rest_bad_nonce',
-			__( 'Invalid or missing REST nonce.', 'pete-panel-site-converter' ),
+			__( 'Invalid or missing REST nonce.', PETE_PSC_TEXT_DOMAIN ),
 			array( 'status' => 403 )
 		);
 	}
@@ -1176,7 +1176,7 @@ function pete_run_export_core( array $job ) {
 	}
 
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
-		throw new Exception( esc_html__( 'Unauthorized', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Unauthorized', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$base_info   = pete_psc_get_export_base_dir();
@@ -1194,25 +1194,25 @@ function pete_run_export_core( array $job ) {
 		set_transient( $key, $state, HOUR_IN_SECONDS );
 	};
 
-	$save_progress( 5, __( 'Preparing archive…', 'pete-panel-site-converter' ) );
+	$save_progress( 5, __( 'Preparing archive…', PETE_PSC_TEXT_DOMAIN ) );
 
 	$job_token = ! empty( $job['id'] ) ? preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $job['id'] ) : 'job';
 	$rand      = wp_generate_password( 8, false, false );
 	$zipPath   = trailingslashit( $baseDirPath ) . 'massive_file-' . $job_token . '-' . $rand . '.zip';
 
 	if ( ! class_exists( 'ZipArchive' ) ) {
-		throw new Exception( esc_html__( 'ZipArchive PHP extension not available. Please enable it to create the .zip file.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'ZipArchive PHP extension not available. Please enable it to create the .zip file.', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$zip         = new ZipArchive();
 	$open_result = $zip->open( $zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE );
 	if ( true !== $open_result ) {
-		throw new Exception( esc_html__( 'Could not create export archive (ZipArchive open failed).', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Could not create export archive (ZipArchive open failed).', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$zip->addEmptyDir( 'filem' );
 
-	$save_progress( 15, __( 'Writing config…', 'pete-panel-site-converter' ) );
+	$save_progress( 15, __( 'Writing config…', PETE_PSC_TEXT_DOMAIN ) );
 
 	global $wpdb;
 	$site_url = str_replace( array( 'http://', 'https://' ), '', get_site_url() );
@@ -1223,10 +1223,10 @@ function pete_run_export_core( array $job ) {
 	if ( ! $zip->addFromString( 'config.txt', $cfg ) ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'config_add_failed_cleanup' );
-		throw new Exception( esc_html__( 'Failed to add config.txt to archive.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Failed to add config.txt to archive.', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
-	$save_progress( 30, __( 'Dumping database…', 'pete-panel-site-converter' ) );
+	$save_progress( 30, __( 'Dumping database…', PETE_PSC_TEXT_DOMAIN ) );
 
 	$db_name     = defined( 'DB_NAME' ) ? DB_NAME : '';
 	$db_user     = defined( 'DB_USER' ) ? DB_USER : '';
@@ -1247,7 +1247,7 @@ function pete_run_export_core( array $job ) {
 		throw new Exception(
 			sprintf(
 				/* translators: %s: database error message */
-				esc_html__( 'Database dump failed: %s', 'pete-panel-site-converter' ),
+				esc_html__( 'Database dump failed: %s', PETE_PSC_TEXT_DOMAIN ),
 				esc_html( $db_error )
 			)
 		);
@@ -1257,14 +1257,14 @@ function pete_run_export_core( array $job ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'zip_cleanup_missing_sql' );
 		pete_psc_unlink( $tmpSql, 'tmp_sql_cleanup_missing_sql' );
-		throw new Exception( esc_html__( 'Database dump created no readable SQL file.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Database dump created no readable SQL file.', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	if ( ! $zip->addFile( $tmpSql, 'query.sql' ) ) {
 		$zip->close();
 		pete_psc_unlink( $zipPath, 'zip_cleanup_add_sql_failed' );
 		pete_psc_unlink( $tmpSql, 'tmp_sql_cleanup_add_sql_failed' );
-		throw new Exception( esc_html__( 'Failed to add query.sql to archive.', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Failed to add query.sql to archive.', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	// -------------------------------------------------------------
@@ -1274,7 +1274,7 @@ function pete_run_export_core( array $job ) {
 	$exclude_plugin_dir_real = pete_psc_realpath( plugin_dir_path( __FILE__ ), 'plugin_dir' );
 
 	// ✅ "Counting..." animation so UI shows movement even on huge sites.
-	$save_progress( 35, __( 'Counting files…', 'pete-panel-site-converter' ) );
+	$save_progress( 35, __( 'Counting files…', PETE_PSC_TEXT_DOMAIN ) );
 
 	$total_files = pete_psc_count_site_files_for_zip(
 		get_home_path(),
@@ -1286,7 +1286,7 @@ function pete_run_export_core( array $job ) {
 		45,
 		sprintf(
 			/* translators: %d: total files to add */
-			__( 'Adding files to archive… (%d files)', 'pete-panel-site-converter' ),
+			__( 'Adding files to archive… (%d files)', PETE_PSC_TEXT_DOMAIN ),
 			(int) $total_files
 		)
 	);
@@ -1320,7 +1320,7 @@ function pete_run_export_core( array $job ) {
 			$pct,
 			sprintf(
 				/* translators: 1: added files, 2: total files */
-				__( 'Adding files to archive… (%1$d/%2$d)', 'pete-panel-site-converter' ),
+				__( 'Adding files to archive… (%1$d/%2$d)', PETE_PSC_TEXT_DOMAIN ),
 				$added,
 				$den
 			)
@@ -1341,7 +1341,7 @@ function pete_run_export_core( array $job ) {
 		90,
 		sprintf(
 			/* translators: %d: number of files added to the ZIP */
-			__( 'Finalizing archive… (%d files)', 'pete-panel-site-converter' ),
+			__( 'Finalizing archive… (%d files)', PETE_PSC_TEXT_DOMAIN ),
 			(int) $added_files
 		)
 	);
@@ -1353,7 +1353,7 @@ function pete_run_export_core( array $job ) {
 	$zip_size = pete_psc_filesize( $zipPath, 'zip_final' );
 	if ( $zip_size <= 0 ) {
 		pete_psc_unlink( $zipPath, 'zip_empty_cleanup' );
-		throw new Exception( esc_html__( 'Export archive created but appears to be invalid (0 bytes).', 'pete-panel-site-converter' ) );
+		throw new Exception( esc_html__( 'Export archive created but appears to be invalid (0 bytes).', PETE_PSC_TEXT_DOMAIN ) );
 	}
 
 	$owner = ( isset( $job['run_as'] ) && $job['run_as'] ) ? (int) $job['run_as'] : (int) get_current_user_id();
@@ -1381,7 +1381,7 @@ function pete_run_export_core( array $job ) {
 		admin_url( 'admin-post.php' )
 	);
 
-	$save_progress( 100, __( 'Ready', 'pete-panel-site-converter' ) );
+	$save_progress( 100, __( 'Ready', PETE_PSC_TEXT_DOMAIN ) );
 
 	return array(
 		'id'            => $id,
@@ -1439,7 +1439,7 @@ function pete_psc_rest_start_export( WP_REST_Request $req ) {
 		'owner'         => get_current_user_id(),
 		'created'       => time(),
 		'progress'      => 1,
-		'message'       => __( 'Queued…', 'pete-panel-site-converter' ),
+		'message'       => __( 'Queued…', PETE_PSC_TEXT_DOMAIN ),
 		'done'          => false,
 		'error'         => null,
 		'download'      => null,
@@ -1457,8 +1457,8 @@ function pete_psc_rest_start_export( WP_REST_Request $req ) {
 
 		if ( false === $scheduled ) {
 			$state['done']     = true;
-			$state['error']    = __( 'Could not schedule WP-Cron event (wp_schedule_single_event returned false).', 'pete-panel-site-converter' );
-			$state['message']  = __( 'Failed', 'pete-panel-site-converter' );
+			$state['error']    = __( 'Could not schedule WP-Cron event (wp_schedule_single_event returned false).', PETE_PSC_TEXT_DOMAIN );
+			$state['message']  = __( 'Failed', PETE_PSC_TEXT_DOMAIN );
 			$state['progress'] = 100;
 			set_transient( 'pete_export_job_' . $job_id, $state, HOUR_IN_SECONDS );
 			return new WP_REST_Response( array( 'job' => $job_id ), 202 );
@@ -1489,13 +1489,13 @@ function pete_psc_rest_export_status( WP_REST_Request $req ) {
 	$job_id     = preg_replace( '/[^A-Za-z0-9_-]/', '', $job_id_raw );
 
 	if ( $job_id === '' ) {
-		return new WP_REST_Response( array( 'error' => __( 'Invalid job id', 'pete-panel-site-converter' ) ), 400 );
+		return new WP_REST_Response( array( 'error' => __( 'Invalid job id', PETE_PSC_TEXT_DOMAIN ) ), 400 );
 	}
 
 	$state = get_transient( 'pete_export_job_' . $job_id );
 
 	if ( ! $state || (int) $state['owner'] !== get_current_user_id() ) {
-		return new WP_REST_Response( array( 'error' => __( 'Not found or expired', 'pete-panel-site-converter' ) ), 404 );
+		return new WP_REST_Response( array( 'error' => __( 'Not found or expired', PETE_PSC_TEXT_DOMAIN ) ), 404 );
 	}
 
 	if ( ! empty( $state['download_url'] ) && ! empty( $state['download_id'] ) ) {
@@ -1505,14 +1505,14 @@ function pete_psc_rest_export_status( WP_REST_Request $req ) {
 
 	if ( ! empty( $state['download_name'] ) ) {
 		$state['download_name'] = sprintf(
-			__( 'Download %s', 'pete-panel-site-converter' ),
+			__( 'Download %s', PETE_PSC_TEXT_DOMAIN ),
 			(string) $state['download_name']
 		);
 	}
 
 	if ( ! empty( $state['zip_path'] ) ) {
 		$state['zip_location_label'] = sprintf(
-			__( 'Export location: %s', 'pete-panel-site-converter' ),
+			__( 'Export location: %s', PETE_PSC_TEXT_DOMAIN ),
 			pete_psc_pretty_path( (string) $state['zip_path'] )
 		);
 	}
@@ -1525,21 +1525,21 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 	$job_id     = preg_replace( '/[^A-Za-z0-9_-]/', '', $job_id_raw );
 
 	if ( $job_id === '' ) {
-		return new WP_REST_Response( array( 'error' => __( 'Invalid job id', 'pete-panel-site-converter' ) ), 400 );
+		return new WP_REST_Response( array( 'error' => __( 'Invalid job id', PETE_PSC_TEXT_DOMAIN ) ), 400 );
 	}
 
 	$key   = 'pete_export_job_' . $job_id;
 	$state = get_transient( $key );
 
 	if ( ! $state || (int) $state['owner'] !== get_current_user_id() ) {
-		return new WP_REST_Response( array( 'error' => __( 'Not found or expired', 'pete-panel-site-converter' ) ), 404 );
+		return new WP_REST_Response( array( 'error' => __( 'Not found or expired', PETE_PSC_TEXT_DOMAIN ) ), 404 );
 	}
 
 	if ( ! empty( $state['done'] ) ) {
 		return new WP_REST_Response( array( 'ok' => true, 'done' => true ), 200 );
 	}
 
-	$state['message']  = __( 'Running…', 'pete-panel-site-converter' );
+	$state['message']  = __( 'Running…', PETE_PSC_TEXT_DOMAIN );
 	$state['progress'] = 3;
 	set_transient( $key, $state, HOUR_IN_SECONDS );
 
@@ -1553,7 +1553,7 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 		$state['download_name'] = isset( $res['download_name'] ) ? (string) $res['download_name'] : null;
 		$state['zip_path']      = isset( $res['zip_path'] ) ? (string) $res['zip_path'] : '';
 		$state['base_dir']      = isset( $res['base_dir'] ) ? (string) $res['base_dir'] : '';
-		$state['message']       = __( 'Ready', 'pete-panel-site-converter' );
+		$state['message']       = __( 'Ready', PETE_PSC_TEXT_DOMAIN );
 		$state['progress']      = 100;
 		set_transient( $key, $state, HOUR_IN_SECONDS );
 
@@ -1562,14 +1562,14 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 		$err_text         = wp_strip_all_tags( (string) $e->getMessage() );
 		$state['done']     = true;
 		$state['error']    = $err_text;
-		$state['message']  = __( 'Failed', 'pete-panel-site-converter' );
+		$state['message']  = __( 'Failed', PETE_PSC_TEXT_DOMAIN );
 		$state['progress'] = 100;
 		set_transient( $key, $state, HOUR_IN_SECONDS );
 
 		return new WP_REST_Response(
 			array(
 				'error' => sprintf(
-					__( 'Error: %s', 'pete-panel-site-converter' ),
+					__( 'Error: %s', PETE_PSC_TEXT_DOMAIN ),
 					$err_text
 				),
 			),
@@ -1595,8 +1595,8 @@ add_action(
 		$run_as = isset( $state['owner'] ) ? (int) $state['owner'] : 0;
 		if ( $run_as <= 0 || ! user_can( $run_as, 'manage_options' ) ) {
 			$state['done']     = true;
-			$state['error']    = __( 'Invalid job owner.', 'pete-panel-site-converter' );
-			$state['message']  = __( 'Failed', 'pete-panel-site-converter' );
+			$state['error']    = __( 'Invalid job owner.', PETE_PSC_TEXT_DOMAIN );
+			$state['message']  = __( 'Failed', PETE_PSC_TEXT_DOMAIN );
 			$state['progress'] = 100;
 			set_transient( $key, $state, HOUR_IN_SECONDS );
 			return;
@@ -1604,7 +1604,7 @@ add_action(
 
 		wp_set_current_user( $run_as );
 
-		$state['message']  = __( 'Running…', 'pete-panel-site-converter' );
+		$state['message']  = __( 'Running…', PETE_PSC_TEXT_DOMAIN );
 		$state['progress'] = 3;
 		set_transient( $key, $state, HOUR_IN_SECONDS );
 
@@ -1617,12 +1617,12 @@ add_action(
 			$state['download_name'] = isset( $res['download_name'] ) ? (string) $res['download_name'] : null;
 			$state['zip_path']      = isset( $res['zip_path'] ) ? (string) $res['zip_path'] : '';
 			$state['base_dir']      = isset( $res['base_dir'] ) ? (string) $res['base_dir'] : '';
-			$state['message']       = __( 'Ready', 'pete-panel-site-converter' );
+			$state['message']       = __( 'Ready', PETE_PSC_TEXT_DOMAIN );
 			$state['progress']      = 100;
 		} catch ( Throwable $e ) {
 			$state['done']     = true;
 			$state['error']    = $e->getMessage();
-			$state['message']  = __( 'Failed', 'pete-panel-site-converter' );
+			$state['message']  = __( 'Failed', PETE_PSC_TEXT_DOMAIN );
 			$state['progress'] = 100;
 		}
 
