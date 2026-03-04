@@ -22,7 +22,7 @@
 
 .pete-psc-progress {
   margin-top: 12px;
-  display: none;
+  display: none; /* ✅ hidden by default */
   max-width: 520px;
 }
 
@@ -51,7 +51,7 @@
   margin-top: 12px;
 }
 
-/* New: Export location label (above download button) */
+/* Export location label (above download button) */
 .pete-psc-location {
   margin: 0 0 10px 0;
   padding: 8px 10px;
@@ -63,7 +63,7 @@
   word-break: break-word;
 }
 
-/* Optional: error box if you ever render server-side errors */
+/* Error box */
 .pete-psc-error {
   margin-top: 10px;
   padding: 10px 12px;

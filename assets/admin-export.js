@@ -2,10 +2,9 @@
 /**
  * Pete Panel Site Converter - Admin Export UI (no jQuery)
  *
- * This file expects wp_localize_script() to provide:
+ * Expects:
  * window.PetePSC = { nonce, startUrl, restRoot, i18n }
  */
-
 (function () {
   "use strict";
 
@@ -31,9 +30,14 @@
     barFill.style.width = safe + "%";
     progressText.textContent = msg || "";
 
+    // Only show when there is actual work to show
     if (window.getComputedStyle(progressWrap).display === "none") {
       progressWrap.style.display = "block";
     }
+  }
+
+  function hideProgress() {
+    progressWrap.style.display = "none";
   }
 
   function clearDownload() {
@@ -54,19 +58,12 @@
     a.href = href;
     a.className = "button button-primary";
     a.textContent = label || t("download_default", "Download export");
-
     downloadWrap.appendChild(a);
   }
 
   function setError(msg) {
     const div = document.createElement("div");
-    div.style.marginTop = "10px";
-    div.style.padding = "10px 12px";
-    div.style.border = "1px solid #d63638";
-    div.style.background = "#fcf0f1";
-    div.style.borderRadius = "4px";
-    div.style.maxWidth = "820px";
-    div.style.color = "#1d2327";
+    div.className = "pete-psc-error";
     div.textContent = msg;
 
     downloadWrap.innerHTML = "";
@@ -83,8 +80,8 @@
     );
 
     const res = await fetch(url, Object.assign({}, opts || {}, { headers }));
-
     const raw = await res.text();
+
     let data = null;
     if (raw) {
       try {
@@ -98,152 +95,154 @@
       const msg =
         (data && (data.message || data.error)) ||
         (raw && raw.slice(0, 200)) ||
-        (res.status + " " + res.statusText) ||
-        "Request failed";
+        ("HTTP " + res.status);
       const err = new Error(msg);
       err.status = res.status;
       err.data = data;
-      err.raw = raw;
       throw err;
     }
 
     return data;
   }
 
-  function restRoot() {
-    const root = (window.PetePSC && window.PetePSC.restRoot) ? window.PetePSC.restRoot : "/wp-json/";
-    return root.endsWith("/") ? root : (root + "/");
+  function buildStatusUrl(jobId) {
+    // startUrl is .../wp-json/pete/v1/export
+    return (window.PetePSC.startUrl || "") + "/" + encodeURIComponent(jobId) + "/status";
   }
 
-  function makeStatusUrl(jobId) {
-    return restRoot() + "pete/v1/export/" + encodeURIComponent(jobId) + "/status";
-  }
-
-  function makeRunUrl(jobId) {
-    return restRoot() + "pete/v1/export/" + encodeURIComponent(jobId) + "/run";
-  }
-
-  const POLL_MS = 2500;
-  const STALL_MS = 45000;
-  const MIN_POLLS_BEFORE_FORCE = 6;
-  const FORCE_RUN_COOLDOWN_MS = 60000;
-
-  async function maybeForceRun(jobId, forceRunAttemptedAt) {
-    const now = Date.now();
-    if (forceRunAttemptedAt && (now - forceRunAttemptedAt) < FORCE_RUN_COOLDOWN_MS) {
-      return forceRunAttemptedAt;
-    }
-
-    try {
-      setProgress(
-        Math.max(parseInt(barFill.style.width, 10) || 3, 3),
-        t("cron_blocked", "Cron seems blocked. Running export directly…")
-      );
-      await restJson(makeRunUrl(jobId), { method: "POST" });
-      return now;
-    } catch (e) {
-      return forceRunAttemptedAt;
-    }
-  }
-
-  async function pollJob(jobId) {
-    let lastPct = -1;
-    let lastChangeAt = Date.now();
-    let polls = 0;
-    let forceRunAttemptedAt = 0;
-
-    while (true) {
-      polls += 1;
-
-      let st;
-      try {
-        st = await restJson(makeStatusUrl(jobId), { method: "GET" });
-      } catch (err) {
-        const shownPct = Math.max(lastPct, 5);
-        setProgress(shownPct, t("error_prefix", "Error:") + " " + err.message);
-        await sleep(POLL_MS);
-        continue;
-      }
-
-      const pct = (st && typeof st.progress !== "undefined") ? parseInt(st.progress, 10) : 0;
-      const msg = (st && st.message) ? String(st.message) : "";
-
-      if (!Number.isNaN(pct) && pct !== lastPct) {
-        lastPct = pct;
-        lastChangeAt = Date.now();
-      }
-
-      setProgress(Number.isNaN(pct) ? Math.max(lastPct, 5) : pct, msg || t("working", "Working…"));
-
-      if (st && st.done) {
-        if (st.error) {
-          setError(t("export_failed", "Export failed:") + " " + String(st.error));
-          btn.disabled = false;
-          btn.textContent = t("start", "Start export");
-          return;
-        }
-
-        if (st.download) {
-          setDownload(
-            String(st.download),
-            st.download_name || t("download_default", "Download export"),
-            st.zip_location_label ? String(st.zip_location_label) : ""
-          );
-        } else {
-          setError(t("download_fallback", "Export finished, but download link is missing. Please refresh this page."));
-        }
-
-        btn.disabled = false;
-        btn.textContent = t("start", "Start export");
-        return;
-      }
-
-      const stalled = (Date.now() - lastChangeAt) > STALL_MS;
-      if (stalled && polls >= MIN_POLLS_BEFORE_FORCE) {
-        forceRunAttemptedAt = await maybeForceRun(jobId, forceRunAttemptedAt);
-        lastChangeAt = Date.now();
-      }
-
-      await sleep(POLL_MS);
-    }
+  function buildRunUrl(jobId) {
+    return (window.PetePSC.startUrl || "") + "/" + encodeURIComponent(jobId) + "/run";
   }
 
   async function startExport() {
     clearDownload();
-    setProgress(2, t("starting", "Starting…"));
+    hideProgress();
 
     btn.disabled = true;
     btn.textContent = t("starting", "Starting…");
 
-    const startUrl = (window.PetePSC && window.PetePSC.startUrl) ? window.PetePSC.startUrl : "";
+    setProgress(1, t("queued", "Queued…"));
 
-    if (!startUrl) {
-      setError(t("failed_start", "Failed to start:") + " Missing startUrl");
+    let startRes = null;
+    try {
+      startRes = await restJson(window.PetePSC.startUrl, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } catch (e) {
       btn.disabled = false;
       btn.textContent = t("start", "Start export");
+      setError(t("failed_start", "Failed to start:") + " " + (e && e.message ? e.message : "Unknown error"));
       return;
     }
 
-    try {
-      const data = await restJson(startUrl, { method: "POST" });
-      const jobId = data && data.job ? String(data.job) : "";
-
-      if (!jobId) {
-        throw new Error("Missing job id in response");
-      }
-
-      setProgress(5, t("queued", "Queued…"));
-      await pollJob(jobId);
-    } catch (err) {
-      setError(t("failed_start", "Failed to start:") + " " + err.message);
+    const jobId = startRes && startRes.job ? startRes.job : null;
+    if (!jobId) {
       btn.disabled = false;
       btn.textContent = t("start", "Start export");
+      setError(t("failed_start", "Failed to start:") + " Missing job id.");
+      return;
     }
+
+    btn.textContent = t("working", "Working…");
+
+    await pollUntilDone(jobId);
+
+    btn.disabled = false;
+    btn.textContent = t("start", "Start export");
+  }
+
+  async function pollUntilDone(jobId) {
+    const statusUrl = buildStatusUrl(jobId);
+    const runUrl = buildRunUrl(jobId);
+
+    let lastProgress = -1;
+    let lastMessage = "";
+    let unchangedTicks = 0;
+    let forceRunTriggered = false;
+
+    // If cron is blocked, we’ll force-run after a short stall.
+    const FORCE_RUN_AFTER_TICKS = 12; // ~12 seconds if interval is 1s initially
+    const MAX_TICKS = 60 * 30; // hard safety cap: ~30 minutes worst-case
+    let tick = 0;
+
+    while (tick < MAX_TICKS) {
+      tick++;
+
+      let state = null;
+      try {
+        state = await restJson(statusUrl, {
+          method: "GET",
+          credentials: "same-origin",
+        });
+      } catch (e) {
+        // transient hiccup: keep trying
+        setProgress(
+          Math.max(1, lastProgress > 0 ? lastProgress : 1),
+          t("working", "Working…") + " " + (e && e.message ? "(" + e.message + ")" : "")
+        );
+        await sleep(1500);
+        continue;
+      }
+
+      const pct = state && typeof state.progress !== "undefined" ? parseInt(state.progress, 10) : 0;
+      const msg = state && state.message ? String(state.message) : t("working", "Working…");
+
+      setProgress(pct, msg);
+
+      // detect stall
+      if (pct === lastProgress && msg === lastMessage) {
+        unchangedTicks++;
+      } else {
+        unchangedTicks = 0;
+        lastProgress = pct;
+        lastMessage = msg;
+      }
+
+      // if stalled early, trigger force-run once
+      if (!forceRunTriggered && unchangedTicks >= FORCE_RUN_AFTER_TICKS && !state.done) {
+        forceRunTriggered = true;
+        setProgress(Math.max(3, pct), t("cron_blocked", "Cron seems blocked. Running export directly…"));
+        try {
+          await restJson(runUrl, {
+            method: "POST",
+            credentials: "same-origin",
+          });
+        } catch (e) {
+          // even if force-run call fails, keep polling (cron may still work)
+        }
+      }
+
+      if (state && state.done) {
+        if (state.error) {
+          setProgress(100, t("export_failed", "Export failed:") + " " + String(state.error));
+          setError(t("export_failed", "Export failed:") + " " + String(state.error));
+          return;
+        }
+
+        if (state.download) {
+          const locationLabel = state.zip_location_label ? String(state.zip_location_label) : "";
+          const label = state.download_name ? String(state.download_name) : t("download_default", "Download export");
+          setProgress(100, t("ready", "Export ready."));
+          setDownload(String(state.download), label, locationLabel);
+          return;
+        }
+
+        setProgress(100, t("download_fallback", "Export finished, but download link is missing. Please refresh this page."));
+        setError(t("download_fallback", "Export finished, but download link is missing. Please refresh this page."));
+        return;
+      }
+
+      // polling interval: quicker early, slower later
+      const interval = pct < 10 ? 1000 : 2000;
+      await sleep(interval);
+    }
+
+    setError(t("error_prefix", "Error:") + " Polling timed out.");
   }
 
   btn.addEventListener("click", function (e) {
     e.preventDefault();
     startExport();
   });
-
 })();
