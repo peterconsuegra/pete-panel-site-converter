@@ -270,14 +270,12 @@ if ( ! function_exists( 'pete_psc_die' ) ) {
 				: __( 'Notice', 'site-migration-backup-export-pete-panel' );
 		}
 
-		$args = array(
-			'response' => (int) $code,
-		);
-
 		wp_die(
 			esc_html( (string) $message ),
 			esc_html( $title ),
-			$args
+			array(
+				'response' => (int) $code,
+			)
 		);
 	}
 }
@@ -1508,16 +1506,16 @@ function pete_psc_rest_export_status( WP_REST_Request $req ) {
 	}
 
 	if ( ! empty( $state['download_name'] ) ) {
-		/* translators: %s: export ZIP filename. */
 		$state['download_name'] = sprintf(
+			/* translators: %s: export ZIP filename. */
 			__( 'Download %s', 'site-migration-backup-export-pete-panel' ),
 			(string) $state['download_name']
 		);
 	}
 
 	if ( ! empty( $state['zip_path'] ) ) {
-		/* translators: %s: filesystem path to the generated export archive. */
 		$state['zip_location_label'] = sprintf(
+			/* translators: %s: filesystem path to the generated export archive. */
 			__( 'Export location: %s', 'site-migration-backup-export-pete-panel' ),
 			pete_psc_pretty_path( (string) $state['zip_path'] )
 		);
@@ -1574,8 +1572,8 @@ function pete_psc_rest_force_run_export( WP_REST_Request $req ) {
 
 		return new WP_REST_Response(
 			array(
-				/* translators: %s: export error message. */
 				'error' => sprintf(
+					/* translators: %s: export error message. */
 					__( 'Error: %s', 'site-migration-backup-export-pete-panel' ),
 					$err_text
 				),
