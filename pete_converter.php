@@ -526,24 +526,21 @@ function pete_psc_delete_dir_recursive( $dir, $label = '' ) {
 	}
 
 	$fs = pete_psc_get_filesystem();
-	if ( $fs ) {
-		$ok = $fs->delete( $dir, true, 'd' );
-		if ( $ok ) {
-			return true;
-		}
+	if ( ! $fs ) {
 		pete_psc_log(
-			'WP_Filesystem delete(dir) failed; falling back to rmdir',
+			'WP_Filesystem unavailable for directory delete',
 			array(
 				'label' => (string) $label,
 				'dir'   => $dir,
 			)
 		);
+		return false;
 	}
 
-	$ok = rmdir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.dir_ops_rmdir
+	$ok = $fs->delete( $dir, true, 'd' );
 	if ( ! $ok ) {
 		pete_psc_log(
-			'rmdir failed',
+			'WP_Filesystem delete(dir) failed',
 			array(
 				'label' => (string) $label,
 				'dir'   => $dir,
