@@ -478,6 +478,134 @@ function pete_psc_unlink( $path, $label = '' ) {
 }
 
 /**
+ * Recursively delete a directory and all its contents.
+ *
+ * @param string $dir
+ * @param string $label
+ * @return bool
+ */
+function pete_psc_delete_dir_recursive( $dir, $label = '' ) {
+	$dir = (string) $dir;
+	if ( '' === $dir || ! file_exists( $dir ) ) {
+		return true;
+	}
+
+	if ( is_file( $dir ) || is_link( $dir ) ) {
+		return pete_psc_unlink( $dir, $label . ':file' );
+	}
+
+	$items = scandir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.dir_ops_scandir
+	if ( false === $items ) {
+		pete_psc_log(
+			'scandir failed while deleting directory recursively',
+			array(
+				'label' => (string) $label,
+				'dir'   => $dir,
+			)
+		);
+		return false;
+	}
+
+	foreach ( $items as $item ) {
+		if ( '.' === $item || '..' === $item ) {
+			continue;
+		}
+
+		$path = trailingslashit( $dir ) . $item;
+
+		if ( is_dir( $path ) && ! is_link( $path ) ) {
+			if ( ! pete_psc_delete_dir_recursive( $path, $label . ':dir' ) ) {
+				return false;
+			}
+			continue;
+		}
+
+		if ( ! pete_psc_unlink( $path, $label . ':item' ) ) {
+			return false;
+		}
+	}
+
+	$fs = pete_psc_get_filesystem();
+	if ( $fs ) {
+		$ok = $fs->delete( $dir, true, 'd' );
+		if ( $ok ) {
+			return true;
+		}
+		pete_psc_log(
+			'WP_Filesystem delete(dir) failed; falling back to rmdir',
+			array(
+				'label' => (string) $label,
+				'dir'   => $dir,
+			)
+		);
+	}
+
+	$ok = rmdir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.dir_ops_rmdir
+	if ( ! $ok ) {
+		pete_psc_log(
+			'rmdir failed',
+			array(
+				'label' => (string) $label,
+				'dir'   => $dir,
+			)
+		);
+	}
+
+	return (bool) $ok;
+}
+
+/**
+ * Delete all contents inside a directory, but keep the directory itself.
+ *
+ * @param string $dir
+ * @param string $label
+ * @return bool
+ */
+function pete_psc_empty_dir( $dir, $label = '' ) {
+	$dir = (string) $dir;
+	if ( '' === $dir ) {
+		return false;
+	}
+
+	if ( ! is_dir( $dir ) ) {
+		return pete_psc_ensure_dir( $dir, $label . ':ensure_dir' );
+	}
+
+	$items = scandir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.dir_ops_scandir
+	if ( false === $items ) {
+		pete_psc_log(
+			'scandir failed while emptying directory',
+			array(
+				'label' => (string) $label,
+				'dir'   => $dir,
+			)
+		);
+		return false;
+	}
+
+	foreach ( $items as $item ) {
+		if ( '.' === $item || '..' === $item ) {
+			continue;
+		}
+
+		$path = trailingslashit( $dir ) . $item;
+
+		if ( is_dir( $path ) && ! is_link( $path ) ) {
+			if ( ! pete_psc_delete_dir_recursive( $path, $label . ':subdir' ) ) {
+				return false;
+			}
+			continue;
+		}
+
+		if ( ! pete_psc_unlink( $path, $label . ':item' ) ) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/**
  * Safe file size with logging.
  *
  * @param string $path
@@ -1183,6 +1311,23 @@ function pete_run_export_core( array $job ) {
 
 	$base_info   = pete_psc_get_export_base_dir();
 	$baseDirPath = (string) $base_info['base_dir'];
+
+	// Clean previous export artifacts before starting a new export.
+	if ( ! pete_psc_empty_dir( $baseDirPath, 'export_base_dir_cleanup' ) ) {
+		throw new Exception( esc_html__( 'Could not clean the export directory before starting a new export.', 'site-migration-backup-export-pete-panel' ) );
+	}
+
+	// Recreate protection files after cleanup.
+	$ht = trailingslashit( $baseDirPath ) . '.htaccess';
+	pete_psc_file_put_contents(
+		$ht,
+		"Require all denied\nOrder allow,deny\nDeny from all\n",
+		'htaccess_uploads_after_cleanup'
+	);
+
+	$idx = trailingslashit( $baseDirPath ) . 'index.html';
+	pete_psc_file_put_contents( $idx, '', 'index_uploads_after_cleanup' );
+
 	$baseDirReal = pete_psc_realpath( $baseDirPath, 'export_base_dir' );
 
 	$save_progress = function ( $pct, $msg = '' ) use ( $job ) {
