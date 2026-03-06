@@ -1183,6 +1183,23 @@ function pete_run_export_core( array $job ) {
 
 	$base_info   = pete_psc_get_export_base_dir();
 	$baseDirPath = (string) $base_info['base_dir'];
+
+	// Clean previous export artifacts before starting a new export.
+	if ( ! pete_psc_empty_dir( $baseDirPath, 'export_base_dir_cleanup' ) ) {
+		throw new Exception( esc_html__( 'Could not clean the export directory before starting a new export.', 'site-migration-backup-export-pete-panel' ) );
+	}
+
+	// Recreate protection files after cleanup.
+	$ht = trailingslashit( $baseDirPath ) . '.htaccess';
+	pete_psc_file_put_contents(
+		$ht,
+		"Require all denied\nOrder allow,deny\nDeny from all\n",
+		'htaccess_uploads_after_cleanup'
+	);
+
+	$idx = trailingslashit( $baseDirPath ) . 'index.html';
+	pete_psc_file_put_contents( $idx, '', 'index_uploads_after_cleanup' );
+
 	$baseDirReal = pete_psc_realpath( $baseDirPath, 'export_base_dir' );
 
 	$save_progress = function ( $pct, $msg = '' ) use ( $job ) {
